@@ -9,6 +9,6 @@ Put peco executable in a folder which is in `%PATH%`
 ## Launch ffl itself
 It's convenient to use windows `Run` to launch `ffl`.  
 
-<kbd>Win</kbd>–<kbd>r</kbd>, then type `ffl`  
+Press <kbd>Win</kbd>–<kbd>r</kbd>, then type `ffl`  
 
-Please make sure that `ffl` is also in a folder which is in `%PATH%`
+Please make sure that `ffl.exe` is also in a folder which is in `%PATH%`
