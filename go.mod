@@ -1,4 +1,4 @@
-module github.com/sssho/ff-launcher
+module github.com/sssho/ffl
 
 go 1.15
 
