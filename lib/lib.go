@@ -114,10 +114,9 @@ func GetShortcutTexts(shortcuts []Shortcut) []string {
 	texts := make([]string, 0, len(shortcuts))
 	checkDuplicate := make(map[string]bool)
 	for _, s := range shortcuts {
-		if checkDuplicate[s.TPath] {
+		key := strings.TrimSpace(s.TPath + s.Args)
+		if checkDuplicate[key] {
 			continue
-		} else {
-			checkDuplicate[s.TPath] = true
 		}
 		isDir, err := isDir(s.TPath)
 		if err != nil {
@@ -133,6 +132,7 @@ func GetShortcutTexts(shortcuts []Shortcut) []string {
 			}
 			texts = append(texts, fmt.Sprintf("%s %s %s", filePrefix, s.TPath, s.Args))
 		}
+		checkDuplicate[key] = true
 	}
 
 	return texts
