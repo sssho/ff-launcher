@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/sssho/ff-launcher/lib"
+	"github.com/sssho/ffl/lib"
 )
 
 func main() {
