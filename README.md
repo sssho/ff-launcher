@@ -1,5 +1,5 @@
 # ffl
-Windows app launcher on command prompt with fizzy-finder
+Windows app launcher on command prompt with fuzzy-finder
 
 ## Requirments
 [peco](https://github.com/peco/peco)
