@@ -81,7 +81,7 @@ func GetShortcutList(dir string) ([]Shortcut, error) {
 
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	shortcuts := make([]Shortcut, 0, len(files))
@@ -146,7 +146,9 @@ func GetRecentDir() (string, error) {
 	return fmt.Sprintf(`%s\AppData\Roaming\Microsoft\Windows\Recent`, home), nil
 }
 
-func RunFF(source []string) (string, error) {
+type Source [][]string
+
+func RunFF(sources Source) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
@@ -158,8 +160,10 @@ func RunFF(source []string) (string, error) {
 	go func() {
 		defer in.Close()
 
-		for _, s := range source {
-			io.WriteString(in, s+"\n")
+		for _, source := range sources {
+			for _, s := range source {
+				io.WriteString(in, s+"\n")
+			}
 		}
 	}()
 	result, err := cmd.Output()
@@ -227,6 +231,9 @@ func RunApp(path string) error {
 }
 
 func Run() int {
+	config, _ := LoadConfig()
+	sources := make(Source, 0, 1+len(config.Folders))
+
 	recentDir, err := GetRecentDir()
 	if err != nil {
 		return exitError
@@ -235,7 +242,17 @@ func Run() int {
 	if err != nil {
 		return exitError
 	}
-	selected, err := RunFF(GetShortcutTexts(shortcuts))
+	sources = append(sources, GetShortcutTexts(shortcuts))
+
+	for _, folder := range config.Folders {
+		shortcuts, err := GetShortcutList(folder)
+		if err != nil {
+			continue
+		}
+		sources = append(sources, GetShortcutTexts(shortcuts))
+	}
+
+	selected, err := RunFF(sources)
 	if err != nil {
 		return exitError
 	}
