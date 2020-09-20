@@ -73,6 +73,8 @@ type Shortcut struct {
 
 func GetShortcutList(dir string) ([]Shortcut, error) {
 	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
+	defer ole.CoUninitialize()
+
 	w, err := NewWscriptShell()
 	if err != nil {
 		return nil, err
@@ -176,6 +178,8 @@ func RunFF(sources Source) (string, error) {
 
 func OpenExplore(path string) error {
 	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
+	defer ole.CoUninitialize()
+
 	oleShellObject, err := oleutil.CreateObject("Shell.Application")
 	if err != nil {
 		return err
@@ -196,6 +200,8 @@ func OpenExplore(path string) error {
 
 func RunDefaultApp(path string) error {
 	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
+	defer ole.CoUninitialize()
+
 	oleShellObject, err := oleutil.CreateObject("WScript.Shell")
 	if err != nil {
 		return err
