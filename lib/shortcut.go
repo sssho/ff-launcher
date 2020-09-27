@@ -16,6 +16,7 @@ type ShortcutInfo struct {
 	Args   string
 	IsDir  bool
 	Parent string
+	Org    Origin
 }
 
 func (s ShortcutInfo) Text() (text string) {
@@ -24,10 +25,11 @@ func (s ShortcutInfo) Text() (text string) {
 	} else {
 		text = fmt.Sprintf("%s %s %s", filePrefix, s.TPath, s.Args)
 	}
+	text = strings.TrimSpace(text)
 	return
 }
 
-func NewShortcutInfoList(dir string) ([]ShortcutInfo, error) {
+func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
 	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
 	defer ole.CoUninitialize()
 
@@ -60,7 +62,7 @@ func NewShortcutInfoList(dir string) ([]ShortcutInfo, error) {
 		if !isdir {
 			parent = filepath.Dir(tpath)
 		}
-		shortcuts = append(shortcuts, ShortcutInfo{file.Name(), tpath, args, isdir, parent})
+		shortcuts = append(shortcuts, ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin})
 	}
 	return shortcuts, nil
 }
