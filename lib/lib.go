@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -18,6 +20,14 @@ const (
 	filePrefix   = "[file  ]"
 )
 
+type Origin int
+
+const (
+	Recent Origin = iota
+	Cache
+	User
+)
+
 func GetRecentDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -26,9 +36,17 @@ func GetRecentDir() (string, error) {
 	return fmt.Sprintf(`%s\AppData\Roaming\Microsoft\Windows\Recent`, home), nil
 }
 
-type Source [][]string
+func CacheDir() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ".ffl"
+	}
+	return filepath.Join(filepath.Dir(exePath), ".ffl")
+}
 
-func RunFF(sources Source) (string, error) {
+type Tmp [][]ShortcutInfo
+
+func RunFF(source []string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
@@ -40,10 +58,8 @@ func RunFF(sources Source) (string, error) {
 	go func() {
 		defer in.Close()
 
-		for _, source := range sources {
-			for _, s := range source {
-				io.WriteString(in, s+"\n")
-			}
+		for _, s := range source {
+			io.WriteString(in, s+"\n")
 		}
 	}()
 	result, err := cmd.Output()
@@ -69,35 +85,106 @@ func RunApp(path string) error {
 	return nil
 }
 
-func Run() int {
-	config, _ := LoadConfig()
-	sources := make(Source, 0, 1+len(config.Folders))
+func CacheLink(path string) error {
+	cacheDir := CacheDir()
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		err := os.Mkdir(cacheDir, os.ModeDir)
+		if err != nil {
+			return err
+		}
+	}
 
+	ofile, err := os.Create(filepath.Join(cacheDir, filepath.Base(path)))
+	if err != nil {
+		return err
+	}
+	defer ofile.Close()
+	ifile, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer ifile.Close()
+	_, err = io.Copy(ofile, ifile)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func TouchLink(path string) error {
+	if err := os.Chtimes(path, time.Now(), time.Now()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Run() int {
+	var cache []ShortcutInfo
+	if _, err := os.Stat(CacheDir()); !os.IsNotExist(err) {
+		cache, err = NewShortcutInfoList(CacheDir(), Cache)
+		if err != nil {
+			return exitError
+		}
+	}
+	config, _ := LoadConfig()
 	recentDir, err := GetRecentDir()
 	if err != nil {
 		return exitError
 	}
-	shortcuts, err := NewShortcutInfoList(recentDir)
+	recent, err := NewShortcutInfoList(recentDir, Recent)
 	if err != nil {
 		return exitError
 	}
-	sources = append(sources, GetShortcutTexts(shortcuts))
 
+	users := make(Tmp, 0, 1+len(config.Folders))
+	var userLen int
 	for _, folder := range config.Folders {
-		shortcuts, err := NewShortcutInfoList(folder)
+		user, err := NewShortcutInfoList(folder, User)
 		if err != nil {
 			continue
 		}
-		sources = append(sources, GetShortcutTexts(shortcuts))
+		users = append(users, user)
+		userLen += len(user)
 	}
 
-	selected, err := RunFF(sources)
+	shortCutInfos := make([]ShortcutInfo, 0, len(cache)+len(recent)+userLen)
+	shortCutInfos = append(shortCutInfos, cache...)
+	shortCutInfos = append(shortCutInfos, recent...)
+	for _, u := range users {
+		shortCutInfos = append(shortCutInfos, u...)
+	}
+
+	unique := make(map[string]ShortcutInfo)
+	texts := make([]string, 0, len(shortCutInfos))
+	for _, s := range shortCutInfos {
+		t := s.Text()
+		if _, ok := unique[t]; ok {
+			continue
+		}
+		unique[t] = s
+		texts = append(texts, t)
+	}
+
+	selected, err := RunFF(texts)
 	if err != nil {
 		return exitError
 	}
 	err = RunApp(selected)
 	if err != nil {
 		return exitError
+	}
+
+	if s, ok := unique[selected]; ok {
+		switch s.Org {
+		case Recent:
+			if err := CacheLink(s.Path); err != nil {
+				return exitError
+			}
+		case Cache:
+			if err := TouchLink(s.Path); err != nil {
+				return exitError
+			}
+		}
 	}
 	return exitOK
 }
