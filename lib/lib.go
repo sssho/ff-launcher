@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -153,6 +154,9 @@ func Run() int {
 	for _, u := range users {
 		shortCutInfos = append(shortCutInfos, u...)
 	}
+	sort.Slice(shortCutInfos, func(i, j int) bool {
+		return shortCutInfos[i].ModTime.After(shortCutInfos[j].ModTime)
+	})
 
 	unique := make(map[string]ShortcutInfo)
 	texts := make([]string, 0, len(shortCutInfos))

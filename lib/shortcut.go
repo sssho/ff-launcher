@@ -6,17 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-ole/go-ole"
 )
 
 type ShortcutInfo struct {
-	Path   string
-	TPath  string
-	Args   string
-	IsDir  bool
-	Parent string
-	Org    Origin
+	Path    string
+	TPath   string
+	Args    string
+	IsDir   bool
+	Parent  string
+	Org     Origin
+	ModTime time.Time
 }
 
 func (s ShortcutInfo) Text() (text string) {
@@ -62,7 +64,7 @@ func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
 		if !isdir {
 			parent = filepath.Dir(tpath)
 		}
-		shortcuts = append(shortcuts, ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin})
+		shortcuts = append(shortcuts, ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()})
 	}
 	return shortcuts, nil
 }
