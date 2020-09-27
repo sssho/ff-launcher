@@ -65,13 +65,24 @@ func (w *WscriptShell) GetShortcutInfo(path string) (string, string, error) {
 	return targetPath.ToString(), args.ToString(), nil
 }
 
-type Shortcut struct {
-	Path  string
-	TPath string
-	Args  string
+type ShortcutInfo struct {
+	Path   string
+	TPath  string
+	Args   string
+	IsDir  bool
+	Parent string
 }
 
-func GetShortcutList(dir string) ([]Shortcut, error) {
+func (s ShortcutInfo) Text() (text string) {
+	if s.IsDir {
+		text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
+	} else {
+		text = fmt.Sprintf("%s %s %s", filePrefix, s.TPath, s.Args)
+	}
+	return
+}
+
+func NewShortcutInfoList(dir string) ([]ShortcutInfo, error) {
 	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
 	defer ole.CoUninitialize()
 
@@ -86,7 +97,9 @@ func GetShortcutList(dir string) ([]Shortcut, error) {
 		return nil, err
 	}
 
-	shortcuts := make([]Shortcut, 0, len(files))
+	shortcuts := make([]ShortcutInfo, 0, len(files))
+	var isdir bool
+	var parent string
 	for _, file := range files {
 		tpath, args, err := w.GetShortcutInfo(filepath.Join(dir, file.Name()))
 		if err != nil {
@@ -95,7 +108,14 @@ func GetShortcutList(dir string) ([]Shortcut, error) {
 		if tpath == "" {
 			continue
 		}
-		shortcuts = append(shortcuts, Shortcut{file.Name(), tpath, args})
+		isdir, err = isDir(tpath)
+		if err != nil {
+			isdir = false
+		}
+		if !isdir {
+			parent = filepath.Dir(tpath)
+		}
+		shortcuts = append(shortcuts, ShortcutInfo{file.Name(), tpath, args, isdir, parent})
 	}
 	return shortcuts, nil
 }
@@ -112,7 +132,7 @@ func isDir(tpath string) (bool, error) {
 	}
 }
 
-func GetShortcutTexts(shortcuts []Shortcut) []string {
+func GetShortcutTexts(shortcuts []ShortcutInfo) []string {
 	texts := make([]string, 0, len(shortcuts))
 	checkDuplicate := make(map[string]bool)
 	for _, s := range shortcuts {
@@ -120,20 +140,14 @@ func GetShortcutTexts(shortcuts []Shortcut) []string {
 		if checkDuplicate[key] {
 			continue
 		}
-		isDir, err := isDir(s.TPath)
-		if err != nil {
-			continue
-		}
-		if isDir {
-			texts = append(texts, fmt.Sprintf("%s %s", folderPrefix, s.TPath))
-		} else {
-			d := filepath.Dir(s.TPath)
-			if !checkDuplicate[d] {
-				texts = append(texts, fmt.Sprintf("%s %s", folderPrefix, d))
-				checkDuplicate[d] = true
+		// Add parent
+		if !s.IsDir {
+			if !checkDuplicate[s.Parent] {
+				texts = append(texts, fmt.Sprintf("%s %s", folderPrefix, s.Parent))
+				checkDuplicate[s.Parent] = true
 			}
-			texts = append(texts, fmt.Sprintf("%s %s %s", filePrefix, s.TPath, s.Args))
 		}
+		texts = append(texts, s.Text())
 		checkDuplicate[key] = true
 	}
 
@@ -244,14 +258,14 @@ func Run() int {
 	if err != nil {
 		return exitError
 	}
-	shortcuts, err := GetShortcutList(recentDir)
+	shortcuts, err := NewShortcutInfoList(recentDir)
 	if err != nil {
 		return exitError
 	}
 	sources = append(sources, GetShortcutTexts(shortcuts))
 
 	for _, folder := range config.Folders {
-		shortcuts, err := GetShortcutList(folder)
+		shortcuts, err := NewShortcutInfoList(folder)
 		if err != nil {
 			continue
 		}
