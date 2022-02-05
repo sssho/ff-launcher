@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -72,16 +73,22 @@ func RunFF(source []string) (string, error) {
 }
 
 func RunApp(path string) error {
+	fileName := ""
 	if strings.HasPrefix(path, folderPrefix) {
-		err := OpenExplore(strings.TrimSpace(strings.Replace(path, folderPrefix, "", -1)))
-		if err != nil {
-			return err
-		}
+		fileName = strings.TrimSpace(strings.Replace(path, folderPrefix, "", -1))
 	} else if strings.HasPrefix(path, filePrefix) {
-		err := RunDefaultApp(strings.TrimSpace(strings.Replace(path, filePrefix, "", -1)))
-		if err != nil {
-			return err
-		}
+		fileName = strings.TrimSpace(strings.Replace(path, filePrefix, "", -1))
+	}
+	cmd := exec.Command("cmd.exe")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    false,
+		CmdLine:       fmt.Sprintf(` /C start "pseudo" %s`, fileName),
+		CreationFlags: 0,
+	}
+
+	err := cmd.Start()
+	if err != nil {
+		return err
 	}
 	return nil
 }
