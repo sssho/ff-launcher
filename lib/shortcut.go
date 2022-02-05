@@ -57,6 +57,10 @@ func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
 		if tpath == "" {
 			continue
 		}
+		_, err = os.Stat(tpath)
+		if err != nil {
+			continue
+		}
 		isdir, err = isDir(tpath)
 		if err != nil {
 			isdir = false
