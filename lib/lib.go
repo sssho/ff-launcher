@@ -13,11 +13,6 @@ import (
 )
 
 const (
-	exitOK    = 0
-	exitError = 1
-)
-
-const (
 	folderPrefix = "[folder]"
 	filePrefix   = "[file  ]"
 )
@@ -126,22 +121,22 @@ func TouchLink(path string) error {
 	return nil
 }
 
-func Run() int {
+func Run() error {
 	var cache []ShortcutInfo
 	if _, err := os.Stat(CacheDir()); !os.IsNotExist(err) {
 		cache, err = NewShortcutInfoList(CacheDir(), Cache)
 		if err != nil {
-			return exitError
+			return err
 		}
 	}
 	config, _ := LoadConfig()
 	recentDir, err := GetRecentDir()
 	if err != nil {
-		return exitError
+		return err
 	}
 	recent, err := NewShortcutInfoList(recentDir, Recent)
 	if err != nil {
-		return exitError
+		return err
 	}
 
 	users := make(Tmp, 0, 1+len(config.Folders))
@@ -178,24 +173,24 @@ func Run() int {
 
 	selected, err := RunFF(texts)
 	if err != nil {
-		return exitError
+		return err
 	}
 	err = RunApp(selected)
 	if err != nil {
-		return exitError
+		return err
 	}
 
 	if s, ok := unique[selected]; ok {
 		switch s.Org {
 		case Recent:
 			if err := CacheLink(s.Path); err != nil {
-				return exitError
+				return err
 			}
 		case Cache:
 			if err := TouchLink(s.Path); err != nil {
-				return exitError
+				return err
 			}
 		}
 	}
-	return exitOK
+	return nil
 }
