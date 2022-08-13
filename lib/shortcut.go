@@ -2,10 +2,13 @@ package lib
 
 import (
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-ole/go-ole"
@@ -31,34 +34,22 @@ func (s ShortcutInfo) Text() (text string) {
 	return
 }
 
-func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
-	ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED|ole.COINIT_SPEED_OVER_MEMORY)
-	defer ole.CoUninitialize()
-
-	w, err := NewWscriptShell()
-	if err != nil {
-		return nil, err
-	}
-	defer w.Release()
-
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	shortcuts := make([]ShortcutInfo, 0, len(files))
+func worker(id int, input chan fs.FileInfo, output chan ShortcutInfo, dir string, origin Origin, w *WscriptShell, wg *sync.WaitGroup) {
 	var isdir bool
 	var parent string
-	for _, file := range files {
-		tpath, args, err := GetShortcutInfo(w, filepath.Join(dir, file.Name()))
+	for file := range input {
+		tpath, args, err := GetShortcutInfo(filepath.Join(dir, file.Name()), w)
 		if err != nil {
+			wg.Done()
 			continue
 		}
 		if tpath == "" {
+			wg.Done()
 			continue
 		}
 		_, err = os.Stat(tpath)
 		if err != nil {
+			wg.Done()
 			continue
 		}
 		isdir, err = isDir(tpath)
@@ -68,8 +59,49 @@ func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
 		if !isdir {
 			parent = filepath.Dir(tpath)
 		}
-		shortcuts = append(shortcuts, ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()})
+		output <- ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()}
+		wg.Done()
 	}
+}
+
+func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	input := make(chan fs.FileInfo, len(files))
+	output := make(chan ShortcutInfo)
+
+	for _, f := range files {
+		input <- f
+	}
+
+	shortcuts := make([]ShortcutInfo, 0, len(files))
+
+	var wg sync.WaitGroup
+	wg.Add(len(files))
+
+	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED|ole.COINIT_DISABLE_OLE1DDE|ole.COINIT_SPEED_OVER_MEMORY)
+	w, err := NewWscriptShell()
+	if err != nil {
+		return nil, err
+	}
+	defer w.Release()
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go worker(i, input, output, dir, origin, w, &wg)
+	}
+	close(input)
+	go func() {
+		for v := range output {
+			shortcuts = append(shortcuts, v)
+		}
+		close(output)
+	}()
+	wg.Wait()
+
+	ole.CoUninitialize()
 	return shortcuts, nil
 }
 
