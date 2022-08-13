@@ -24,6 +24,45 @@ type Shortcut struct {
 	ModTime time.Time
 }
 
+func NewShortcut(dir string, finfo fs.FileInfo, org Origin) (s *Shortcut, err error) {
+	var shortcut Shortcut
+	path := filepath.Join(dir, finfo.Name())
+	shortcut.Path = path
+	shortcut.ModTime = finfo.ModTime()
+	shortcut.Org = org
+
+	return &shortcut, nil
+}
+
+func (s *Shortcut) Resolve(w *WscriptShell) error {
+	tpath, args, err := GetShortcutInfo(s.Path, w)
+	if err != nil {
+		return err
+	}
+	if tpath == "" {
+		return fmt.Errorf("tpath is nil")
+	}
+	_, err = os.Stat(tpath)
+	if err != nil {
+		return err
+	}
+	var isdir bool
+	var parent string
+	isdir, err = isDir(tpath)
+	if err != nil {
+		isdir = false
+	}
+	if !isdir {
+		parent = filepath.Dir(tpath)
+	}
+	s.TPath = tpath
+	s.Args = args
+	s.IsDir = isdir
+	s.Parent = parent
+
+	return nil
+}
+
 func (s Shortcut) Text() (text string) {
 	if s.IsDir {
 		text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
@@ -34,32 +73,19 @@ func (s Shortcut) Text() (text string) {
 	return
 }
 
-func worker(id int, input chan fs.FileInfo, output chan Shortcut, dir string, origin Origin, w *WscriptShell, wg *sync.WaitGroup) {
-	var isdir bool
-	var parent string
-	for file := range input {
-		tpath, args, err := GetShortcutInfo(filepath.Join(dir, file.Name()), w)
+func worker(input chan fs.FileInfo, output chan Shortcut, dir string, org Origin, w *WscriptShell, wg *sync.WaitGroup) {
+	for finfo := range input {
+		shortcut, err := NewShortcut(dir, finfo, org)
 		if err != nil {
 			wg.Done()
 			continue
 		}
-		if tpath == "" {
-			wg.Done()
-			continue
-		}
-		_, err = os.Stat(tpath)
+		err = shortcut.Resolve(w)
 		if err != nil {
 			wg.Done()
 			continue
 		}
-		isdir, err = isDir(tpath)
-		if err != nil {
-			isdir = false
-		}
-		if !isdir {
-			parent = filepath.Dir(tpath)
-		}
-		output <- Shortcut{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()}
+		output <- *shortcut
 		wg.Done()
 	}
 }
@@ -79,18 +105,18 @@ func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
 
 	shortcuts := make([]Shortcut, 0, len(files))
 
-	var wg sync.WaitGroup
-	wg.Add(len(files))
-
 	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED|ole.COINIT_DISABLE_OLE1DDE|ole.COINIT_SPEED_OVER_MEMORY)
+	defer ole.CoUninitialize()
 	w, err := NewWscriptShell()
 	if err != nil {
 		return nil, err
 	}
 	defer w.Release()
 
+	var wg sync.WaitGroup
+	wg.Add(len(files))
 	for i := 0; i < runtime.NumCPU(); i++ {
-		go worker(i, input, output, dir, origin, w, &wg)
+		go worker(input, output, dir, origin, w, &wg)
 	}
 	close(input)
 	go func() {
@@ -100,8 +126,6 @@ func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
 		close(output)
 	}()
 	wg.Wait()
-
-	ole.CoUninitialize()
 	return shortcuts, nil
 }
 

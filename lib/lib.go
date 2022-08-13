@@ -182,7 +182,6 @@ func Run() error {
 		if err != nil {
 			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
 			continue
-			// return fmt.Errorf("RunFF: selected [%s], %w", selected, err)
 		}
 		if selected == "" {
 			continue
