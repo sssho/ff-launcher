@@ -14,7 +14,7 @@ import (
 	"github.com/go-ole/go-ole"
 )
 
-type ShortcutInfo struct {
+type Shortcut struct {
 	Path    string
 	TPath   string
 	Args    string
@@ -24,7 +24,7 @@ type ShortcutInfo struct {
 	ModTime time.Time
 }
 
-func (s ShortcutInfo) Text() (text string) {
+func (s Shortcut) Text() (text string) {
 	if s.IsDir {
 		text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
 	} else {
@@ -34,7 +34,7 @@ func (s ShortcutInfo) Text() (text string) {
 	return
 }
 
-func worker(id int, input chan fs.FileInfo, output chan ShortcutInfo, dir string, origin Origin, w *WscriptShell, wg *sync.WaitGroup) {
+func worker(id int, input chan fs.FileInfo, output chan Shortcut, dir string, origin Origin, w *WscriptShell, wg *sync.WaitGroup) {
 	var isdir bool
 	var parent string
 	for file := range input {
@@ -59,25 +59,25 @@ func worker(id int, input chan fs.FileInfo, output chan ShortcutInfo, dir string
 		if !isdir {
 			parent = filepath.Dir(tpath)
 		}
-		output <- ShortcutInfo{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()}
+		output <- Shortcut{filepath.Join(dir, file.Name()), tpath, args, isdir, parent, origin, file.ModTime()}
 		wg.Done()
 	}
 }
 
-func NewShortcutInfoList(dir string, origin Origin) ([]ShortcutInfo, error) {
+func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	input := make(chan fs.FileInfo, len(files))
-	output := make(chan ShortcutInfo)
+	output := make(chan Shortcut)
 
 	for _, f := range files {
 		input <- f
 	}
 
-	shortcuts := make([]ShortcutInfo, 0, len(files))
+	shortcuts := make([]Shortcut, 0, len(files))
 
 	var wg sync.WaitGroup
 	wg.Add(len(files))
@@ -117,7 +117,7 @@ func isDir(tpath string) (bool, error) {
 	}
 }
 
-func GetShortcutTexts(shortcuts []ShortcutInfo) []string {
+func GetShortcutTexts(shortcuts []Shortcut) []string {
 	texts := make([]string, 0, len(shortcuts))
 	checkDuplicate := make(map[string]bool)
 	for _, s := range shortcuts {
