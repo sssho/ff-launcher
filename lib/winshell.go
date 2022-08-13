@@ -30,21 +30,21 @@ func (w *WscriptShell) Release() {
 	w.Wshell.Release()
 }
 
-func GetShortcutInfo(w *WscriptShell, path string) (string, string, error) {
+func GetShortcutInfo(path string, w *WscriptShell) (string, string, error) {
 	shortcut, err := oleutil.CallMethod(w.Wshell, "CreateShortcut", path)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("createshortcut error!{%s}: %w", path, err)
 	}
 	shortcutDispath := shortcut.ToIDispatch()
 
 	targetPath, err := shortcutDispath.GetProperty("TargetPath")
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("targetpath error!: %w", err)
 	}
 
 	args, err := shortcutDispath.GetProperty("Arguments")
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("arguments error!: %w", err)
 	}
 	return targetPath.ToString(), args.ToString(), nil
 }
