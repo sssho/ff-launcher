@@ -175,6 +175,9 @@ func Run() error {
 	if err != nil {
 		return err
 	}
+	if selected == "" {
+		return nil
+	}
 	err = RunApp(selected)
 	if err != nil {
 		return err
