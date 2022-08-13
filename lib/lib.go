@@ -43,13 +43,18 @@ func CacheDir() string {
 
 type Tmp [][]ShortcutInfo
 
-func RunFF(source []string) (string, error) {
+func RunFF(source []string, query string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
 	}
 
-	cmd := exec.Command(ff)
+	var cmd *exec.Cmd
+	if query == "" {
+		cmd = exec.Command(ff)
+	} else {
+		cmd = exec.Command(ff, "--query", query)
+	}
 	cmd.Stderr = os.Stderr
 	in, _ := cmd.StdinPipe()
 	go func() {
@@ -171,29 +176,36 @@ func Run() error {
 		texts = append(texts, t)
 	}
 
-	selected, err := RunFF(texts)
-	if err != nil {
-		return err
-	}
-	if selected == "" {
-		return nil
-	}
-	err = RunApp(selected)
-	if err != nil {
-		return err
-	}
+	query := ""
+	for {
+		selected, err := RunFF(texts, query)
+		if err != nil {
+			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
+			continue
+			// return fmt.Errorf("RunFF: selected [%s], %w", selected, err)
+		}
+		if selected == "" {
+			continue
+		}
+		query = ""
+		err = RunApp(selected)
+		if err != nil {
+			return fmt.Errorf("RunAPP: selected [%s], %w", selected, err)
+		}
 
-	if s, ok := unique[selected]; ok {
-		switch s.Org {
-		case Recent:
-			if err := CacheLink(s.Path); err != nil {
-				return err
-			}
-		case Cache:
-			if err := TouchLink(s.Path); err != nil {
-				return err
+		if s, ok := unique[selected]; ok {
+			switch s.Org {
+			case Recent:
+				if err := CacheLink(s.Path); err != nil {
+					return err
+				}
+			case Cache:
+				if err := TouchLink(s.Path); err != nil {
+					return err
+				}
 			}
 		}
+
 	}
 	return nil
 }
