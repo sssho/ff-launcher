@@ -41,7 +41,7 @@ func CacheDir() string {
 	return filepath.Join(filepath.Dir(exePath), ".ffl")
 }
 
-type Tmp [][]ShortcutInfo
+type Tmp [][]Shortcut
 
 func RunFF(source []string, query string) (string, error) {
 	ff, err := exec.LookPath("peco")
@@ -127,9 +127,9 @@ func TouchLink(path string) error {
 }
 
 func Run() error {
-	var cache []ShortcutInfo
+	var cache []Shortcut
 	if _, err := os.Stat(CacheDir()); !os.IsNotExist(err) {
-		cache, err = NewShortcutInfoList(CacheDir(), Cache)
+		cache, err = NewShortcutList(CacheDir(), Cache)
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	recent, err := NewShortcutInfoList(recentDir, Recent)
+	recent, err := NewShortcutList(recentDir, Recent)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func Run() error {
 	users := make(Tmp, 0, 1+len(config.Folders))
 	var userLen int
 	for _, folder := range config.Folders {
-		user, err := NewShortcutInfoList(folder, User)
+		user, err := NewShortcutList(folder, User)
 		if err != nil {
 			continue
 		}
@@ -155,7 +155,7 @@ func Run() error {
 		userLen += len(user)
 	}
 
-	shortCutInfos := make([]ShortcutInfo, 0, len(cache)+len(recent)+userLen)
+	shortCutInfos := make([]Shortcut, 0, len(cache)+len(recent)+userLen)
 	shortCutInfos = append(shortCutInfos, cache...)
 	shortCutInfos = append(shortCutInfos, recent...)
 	for _, u := range users {
@@ -165,7 +165,7 @@ func Run() error {
 		return shortCutInfos[i].ModTime.After(shortCutInfos[j].ModTime)
 	})
 
-	unique := make(map[string]ShortcutInfo)
+	unique := make(map[string]Shortcut)
 	texts := make([]string, 0, len(shortCutInfos))
 	for _, s := range shortCutInfos {
 		t := s.Text()
