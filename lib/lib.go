@@ -167,20 +167,25 @@ func FindFromUser(folders []string) (shortcuts []Shortcut, err error) {
 	return sc, nil
 }
 
-func FindShortcuts() (s *Shortcuts, err error) {
+func FindShortcuts(config Config) (s *Shortcuts, err error) {
 	var shortcuts *Shortcuts = &Shortcuts{}
-	shortcuts.cache, err = FindFromCache()
-	if err != nil {
-		return nil, fmt.Errorf("read cache error")
+	if config.EnableCache {
+		shortcuts.cache, err = FindFromCache()
+		if err != nil {
+			return nil, fmt.Errorf("read cache error")
+		}
 	}
-	shortcuts.recent, err = FindFromRecent()
-	if err != nil {
-		return nil, fmt.Errorf("read recent error")
+	if config.EnableRecent {
+		shortcuts.recent, err = FindFromRecent()
+		if err != nil {
+			return nil, fmt.Errorf("read recent error")
+		}
 	}
-	config, _ := LoadConfig()
-	shortcuts.user, err = FindFromUser(config.Folders)
-	if err != nil {
-		return nil, fmt.Errorf("read user error")
+	if config.EnableUser {
+		shortcuts.user, err = FindFromUser(config.Folders)
+		if err != nil {
+			return nil, fmt.Errorf("read user error")
+		}
 	}
 	shortcuts.Merge()
 	shortcuts.Sort()
@@ -190,11 +195,16 @@ func FindShortcuts() (s *Shortcuts, err error) {
 }
 
 func Run() error {
-	shortcuts, err := FindShortcuts()
+	config, _ := LoadConfig()
+	shortcuts, err := FindShortcuts(config)
 	if err != nil {
 		return err
 	}
-	query := ""
+	for _, v := range shortcuts.unique {
+		fmt.Println(v.Text())
+	}
+	// os.Exit(1)
+	query := config.DefaultQuery
 	for {
 		selected, err := RunFF(shortcuts, query)
 		if err != nil {
@@ -204,10 +214,13 @@ func Run() error {
 		if selected == "" {
 			continue
 		}
-		query = ""
+		query = config.DefaultQuery
 		err = RunApp(selected)
 		if err != nil {
 			return fmt.Errorf("RunAPP: selected [%s], %w", selected, err)
+		}
+		if config.OneShot {
+			break
 		}
 	}
 	return nil
