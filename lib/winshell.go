@@ -30,7 +30,7 @@ func (w *WscriptShell) Release() {
 	w.Wshell.Release()
 }
 
-func GetShortcutInfo(path string, w *WscriptShell) (string, string, error) {
+func ResolveShortcut(path string, w *WscriptShell) (string, string, error) {
 	shortcut, err := oleutil.CallMethod(w.Wshell, "CreateShortcut", path)
 	if err != nil {
 		return "", "", fmt.Errorf("createshortcut error!{%s}: %w", path, err)
