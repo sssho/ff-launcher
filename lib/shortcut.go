@@ -35,7 +35,7 @@ func NewShortcut(dir string, finfo fs.FileInfo, org Origin) (s *Shortcut, err er
 }
 
 func (s *Shortcut) Resolve(w *WscriptShell) error {
-	tpath, args, err := GetShortcutInfo(s.Path, w)
+	tpath, args, err := ResolveShortcut(s.Path, w)
 	if err != nil {
 		return err
 	}
