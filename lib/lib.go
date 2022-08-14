@@ -1,8 +1,10 @@
 package lib
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,12 +34,51 @@ func GetRecentDir() (string, error) {
 	return fmt.Sprintf(`%s\AppData\Roaming\Microsoft\Windows\Recent`, home), nil
 }
 
-func CacheDir() string {
-	exePath, err := os.Executable()
-	if err != nil {
-		return ".ffl"
+func SetupCache(config *Config) {
+	name := "ffl_cache.json"
+	if _, err := os.Stat(config.CacheDir); !os.IsNotExist(err) {
+		config.CachePath = filepath.Join(config.CacheDir, name)
+		return
 	}
-	return filepath.Join(filepath.Dir(exePath), ".ffl")
+	// default
+	defaultDir := filepath.Join(os.Getenv("AppData"), "ffl")
+	err := os.Mkdir(defaultDir, 0750)
+	if err != nil && !os.IsExist(err) {
+		return
+	}
+	config.CachePath = filepath.Join(defaultDir, name)
+}
+
+func WriteCache(path string, s []Shortcut) error {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	io.WriteString(f, string(b))
+	return nil
+}
+
+func ReadCache(path string) (s []Shortcut, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	var m []Shortcut
+	err = json.Unmarshal(b, &m)
+	if err != nil {
+		return nil, err
+	}
+
+	return m, err
 }
 
 func RunFF(source *Shortcuts, query string) (string, error) {
@@ -132,17 +173,6 @@ func ReadDir(dir string, org Origin) (shortcuts []Shortcut, err error) {
 	return sc, nil
 }
 
-func FindFromCache() (shortcuts []Shortcut, err error) {
-	if _, err := os.Stat(CacheDir()); os.IsNotExist(err) {
-		return nil, nil
-	}
-	sc, err := ReadDir(CacheDir(), Cache)
-	if err != nil {
-		return nil, err
-	}
-	return sc, nil
-}
-
 func FindFromRecent() (shortcuts []Shortcut, err error) {
 	recentDir, err := GetRecentDir()
 	if err != nil {
@@ -170,10 +200,10 @@ func FindFromUser(folders []string) (shortcuts []Shortcut, err error) {
 func FindShortcuts(config Config) (s *Shortcuts, err error) {
 	var shortcuts *Shortcuts = &Shortcuts{}
 	if config.EnableCache {
-		shortcuts.cache, err = FindFromCache()
-		if err != nil {
-			return nil, fmt.Errorf("read cache error")
-		}
+		shortcuts.cache, _ = ReadCache(config.CachePath)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("read cache error")
+		// }
 	}
 	if config.EnableRecent {
 		shortcuts.recent, err = FindFromRecent()
@@ -196,6 +226,7 @@ func FindShortcuts(config Config) (s *Shortcuts, err error) {
 
 func Run() error {
 	config, _ := LoadConfig()
+	SetupCache(&config)
 	shortcuts, err := FindShortcuts(config)
 	if err != nil {
 		return err
@@ -203,7 +234,11 @@ func Run() error {
 	for _, v := range shortcuts.unique {
 		fmt.Println(v.Text())
 	}
-	// os.Exit(1)
+	err = WriteCache(config.CachePath, shortcuts.unique)
+	if err != nil {
+		return err
+	}
+	os.Exit(1)
 	query := config.DefaultQuery
 	for {
 		selected, err := RunFF(shortcuts, query)

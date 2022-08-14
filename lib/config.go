@@ -14,16 +14,17 @@ type Config struct {
 	EnableCache  bool
 	DefaultQuery string
 	OneShot      bool
+	CachePath    string
 }
 
 func LoadConfig() (Config, error) {
 	exePath, err := os.Executable()
 	if err != nil {
-		return Config{nil, "", true, true, true, "", false}, err
+		return Config{nil, "", true, true, true, "", false, ""}, err
 	}
 	file, err := os.Open(filepath.Join(filepath.Dir(exePath), "fflconf.json"))
 	if err != nil {
-		return Config{nil, "", true, true, true, "", false}, err
+		return Config{nil, "", true, true, true, "", false, ""}, err
 	}
 	dec := json.NewDecoder(file)
 	var config Config
