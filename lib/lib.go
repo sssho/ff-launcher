@@ -238,7 +238,6 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	os.Exit(1)
 	query := config.DefaultQuery
 	for {
 		selected, err := RunFF(shortcuts, query)

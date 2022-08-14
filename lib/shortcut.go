@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-ole/go-ole"
@@ -73,20 +72,15 @@ func (s Shortcut) Text() (text string) {
 	return
 }
 
-func worker(input chan fs.FileInfo, output chan Shortcut, dir string, org Origin, w *WscriptShell, wg *sync.WaitGroup) {
+func worker(input chan fs.FileInfo, output chan Shortcut, dir string, org Origin, w *WscriptShell) {
 	for finfo := range input {
 		shortcut, err := NewShortcut(dir, finfo, org)
 		if err != nil {
-			wg.Done()
+			output <- *shortcut
 			continue
 		}
-		err = shortcut.Resolve(w)
-		if err != nil {
-			wg.Done()
-			continue
-		}
+		_ = shortcut.Resolve(w)
 		output <- *shortcut
-		wg.Done()
 	}
 }
 
@@ -96,14 +90,15 @@ func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
 		return nil, err
 	}
 
-	input := make(chan fs.FileInfo, len(files))
+	workNum := len(files)
+	input := make(chan fs.FileInfo, workNum)
 	output := make(chan Shortcut)
 
 	for _, f := range files {
 		input <- f
 	}
 
-	shortcuts := make([]Shortcut, 0, len(files))
+	shortcuts := make([]Shortcut, 0, workNum)
 
 	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED|ole.COINIT_DISABLE_OLE1DDE|ole.COINIT_SPEED_OVER_MEMORY)
 	defer ole.CoUninitialize()
@@ -112,20 +107,30 @@ func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
 		return nil, err
 	}
 	defer w.Release()
-
-	var wg sync.WaitGroup
-	wg.Add(len(files))
 	for i := 0; i < runtime.NumCPU(); i++ {
-		go worker(input, output, dir, origin, w, &wg)
+		go worker(input, output, dir, origin, w)
 	}
-	close(input)
+	// close(input)
+	end := make(chan bool)
 	go func() {
+		var done int
 		for v := range output {
+			done++
+			if v.TPath == "" {
+				if done == workNum {
+					break
+				}
+				continue
+			}
 			shortcuts = append(shortcuts, v)
+			if done == workNum {
+				break
+			}
 		}
-		close(output)
+		end <- true
+		// close(output)
 	}()
-	wg.Wait()
+	<-end
 	return shortcuts, nil
 }
 
