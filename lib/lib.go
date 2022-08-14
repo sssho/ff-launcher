@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"time"
 )
 
 const (
@@ -41,9 +40,7 @@ func CacheDir() string {
 	return filepath.Join(filepath.Dir(exePath), ".ffl")
 }
 
-type Tmp [][]Shortcut
-
-func RunFF(source []string, query string) (string, error) {
+func RunFF(source *Shortcuts, query string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
@@ -60,8 +57,8 @@ func RunFF(source []string, query string) (string, error) {
 	go func() {
 		defer in.Close()
 
-		for _, s := range source {
-			io.WriteString(in, s+"\n")
+		for _, s := range source.unique {
+			io.WriteString(in, s.Text()+"\n")
 		}
 	}()
 	result, err := cmd.Output()
@@ -93,92 +90,113 @@ func RunApp(path string) error {
 	return nil
 }
 
-func CacheLink(path string) error {
-	cacheDir := CacheDir()
-	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-		err := os.Mkdir(cacheDir, os.ModeDir)
-		if err != nil {
-			return err
-		}
-	}
-
-	ofile, err := os.Create(filepath.Join(cacheDir, filepath.Base(path)))
-	if err != nil {
-		return err
-	}
-	defer ofile.Close()
-	ifile, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer ifile.Close()
-	_, err = io.Copy(ofile, ifile)
-	if err != nil {
-		return err
-	}
-	return nil
+type Shortcuts struct {
+	recent []Shortcut
+	cache  []Shortcut
+	user   []Shortcut
+	merge  []Shortcut
+	unique []Shortcut
 }
 
-func TouchLink(path string) error {
-	if err := os.Chtimes(path, time.Now(), time.Now()); err != nil {
-		return err
+func (s *Shortcuts) Merge() {
+	s.merge = make([]Shortcut, 0, len(s.recent)+len(s.cache)+len(s.user))
+	s.merge = append(s.merge, s.cache...)
+	s.merge = append(s.merge, s.recent...)
+	s.merge = append(s.merge, s.user...)
+}
+
+func (s *Shortcuts) Sort() {
+	sort.Slice(s.merge, func(i, j int) bool {
+		return s.merge[i].ModTime.After(s.merge[j].ModTime)
+	})
+}
+
+func (s *Shortcuts) Unique() {
+	s.unique = make([]Shortcut, 0, len(s.merge))
+	uni := make(map[string]bool)
+	for _, v := range s.merge {
+		t := v.Text()
+		if _, ok := uni[t]; ok {
+			continue
+		}
+		uni[t] = true
+		s.unique = append(s.unique, v)
 	}
-	return nil
+}
+
+func ReadDir(dir string, org Origin) (shortcuts []Shortcut, err error) {
+	sc, err := NewShortcutList(dir, org)
+	if err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func FindFromCache() (shortcuts []Shortcut, err error) {
+	if _, err := os.Stat(CacheDir()); os.IsNotExist(err) {
+		return nil, nil
+	}
+	sc, err := ReadDir(CacheDir(), Cache)
+	if err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func FindFromRecent() (shortcuts []Shortcut, err error) {
+	recentDir, err := GetRecentDir()
+	if err != nil {
+		return nil, err
+	}
+	sc, err := ReadDir(recentDir, Recent)
+	if err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func FindFromUser(folders []string) (shortcuts []Shortcut, err error) {
+	var sc []Shortcut
+	for _, folder := range folders {
+		sc_, err := ReadDir(folder, User)
+		if err != nil {
+			return nil, err
+		}
+		sc = append(sc, sc_...)
+	}
+	return sc, nil
+}
+
+func FindShortcuts() (s *Shortcuts, err error) {
+	var shortcuts *Shortcuts = &Shortcuts{}
+	shortcuts.cache, err = FindFromCache()
+	if err != nil {
+		return nil, fmt.Errorf("read cache error")
+	}
+	shortcuts.recent, err = FindFromRecent()
+	if err != nil {
+		return nil, fmt.Errorf("read recent error")
+	}
+	config, _ := LoadConfig()
+	shortcuts.user, err = FindFromUser(config.Folders)
+	if err != nil {
+		return nil, fmt.Errorf("read user error")
+	}
+	shortcuts.Merge()
+	shortcuts.Sort()
+	shortcuts.Unique()
+
+	return shortcuts, nil
 }
 
 func Run() error {
-	var cache []Shortcut
-	if _, err := os.Stat(CacheDir()); !os.IsNotExist(err) {
-		cache, err = NewShortcutList(CacheDir(), Cache)
-		if err != nil {
-			return err
-		}
-	}
-	config, _ := LoadConfig()
-	recentDir, err := GetRecentDir()
+	shortcuts, err := FindShortcuts()
 	if err != nil {
 		return err
 	}
-	recent, err := NewShortcutList(recentDir, Recent)
-	if err != nil {
-		return err
-	}
-
-	users := make(Tmp, 0, 1+len(config.Folders))
-	var userLen int
-	for _, folder := range config.Folders {
-		user, err := NewShortcutList(folder, User)
-		if err != nil {
-			continue
-		}
-		users = append(users, user)
-		userLen += len(user)
-	}
-
-	shortCutInfos := make([]Shortcut, 0, len(cache)+len(recent)+userLen)
-	shortCutInfos = append(shortCutInfos, cache...)
-	shortCutInfos = append(shortCutInfos, recent...)
-	for _, u := range users {
-		shortCutInfos = append(shortCutInfos, u...)
-	}
-	sort.Slice(shortCutInfos, func(i, j int) bool {
-		return shortCutInfos[i].ModTime.After(shortCutInfos[j].ModTime)
-	})
-
-	unique := make(map[string]Shortcut)
-	texts := make([]string, 0, len(shortCutInfos))
-	for _, s := range shortCutInfos {
-		t := s.Text()
-		if _, ok := unique[t]; ok {
-			continue
-		}
-		unique[t] = s
-		texts = append(texts, t)
-	}
-
 	query := ""
 	for {
-		selected, err := RunFF(texts, query)
+		selected, err := RunFF(shortcuts, query)
 		if err != nil {
 			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
 			continue
@@ -191,20 +209,6 @@ func Run() error {
 		if err != nil {
 			return fmt.Errorf("RunAPP: selected [%s], %w", selected, err)
 		}
-
-		if s, ok := unique[selected]; ok {
-			switch s.Org {
-			case Recent:
-				if err := CacheLink(s.Path); err != nil {
-					return err
-				}
-			case Cache:
-				if err := TouchLink(s.Path); err != nil {
-					return err
-				}
-			}
-		}
-
 	}
 	return nil
 }
