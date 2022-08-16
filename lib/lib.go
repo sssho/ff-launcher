@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,16 +49,17 @@ func SetupCache(config *Config) {
 }
 
 func WriteCache(path string, s []Shortcut) error {
-	b, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	io.WriteString(f, string(b))
+	e := json.NewEncoder(f)
+	e.SetIndent("", "  ")
+	err = e.Encode(s)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -68,17 +68,12 @@ func ReadCache(path string) (s []Shortcut, err error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := ioutil.ReadAll(f)
+	d := json.NewDecoder(f)
+	err = d.Decode(&s)
 	if err != nil {
 		return nil, err
 	}
-	var m []Shortcut
-	err = json.Unmarshal(b, &m)
-	if err != nil {
-		return nil, err
-	}
-
-	return m, err
+	return s, err
 }
 
 func RunFF(source *Shortcuts, query string) (string, error) {
@@ -224,21 +219,21 @@ func FindShortcuts(config Config) (s *Shortcuts, err error) {
 	return shortcuts, nil
 }
 
-func Run() error {
+func Run(debug bool) error {
 	config, _ := LoadConfig()
 	SetupCache(&config)
 	shortcuts, err := FindShortcuts(config)
 	if err != nil {
 		return err
 	}
-	for _, v := range shortcuts.unique {
-		fmt.Println(v.Text())
-	}
 	err = WriteCache(config.CachePath, shortcuts.unique)
 	if err != nil {
 		return err
 	}
 	query := config.DefaultQuery
+	if debug {
+		return nil
+	}
 	for {
 		selected, err := RunFF(shortcuts, query)
 		if err != nil {
