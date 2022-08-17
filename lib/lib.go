@@ -161,7 +161,7 @@ func (s *Shortcuts) Unique() {
 }
 
 func ReadDir(dir string, org Origin) (shortcuts []Shortcut, err error) {
-	sc, err := NewShortcutList(dir, org)
+	sc, err := NewShortcuts(dir, org)
 	if err != nil {
 		return nil, err
 	}

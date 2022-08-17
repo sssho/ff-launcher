@@ -26,14 +26,40 @@ type Shortcut struct {
 	ModTime time.Time
 }
 
-func NewShortcut(dir string, finfo fs.FileInfo, org Origin) (s *Shortcut, err error) {
-	var shortcut Shortcut
-	path := filepath.Join(dir, finfo.Name())
-	shortcut.Path = path
-	shortcut.ModTime = finfo.ModTime()
-	shortcut.Org = org
+func NewShortcut(dir string, finfo fs.FileInfo, org Origin) (s Shortcut, err error) {
+	s.Path = filepath.Join(dir, finfo.Name())
+	s.ModTime = finfo.ModTime()
+	s.Org = org
 
-	return &shortcut, nil
+	f, err := os.Open(s.Path)
+	if err != nil {
+		return s, err
+	}
+	defer f.Close()
+	tpath, err := ResolveShortcut(f)
+	if err != nil {
+		return s, err
+	}
+	if tpath == "" {
+		return s, fmt.Errorf("tpath is nil")
+	}
+	_, err = os.Stat(tpath)
+	if err != nil {
+		return s, err
+	}
+	isdir, err := isDir(tpath)
+	if err != nil {
+		isdir = false
+	}
+	var parent string
+	if !isdir {
+		parent = filepath.Dir(tpath)
+	}
+	s.TPath = tpath
+	s.Args = "" // TODO
+	s.IsDir = isdir
+	s.Parent = parent
+	return s, nil
 }
 
 const LINKFLAGS_OFFSET = 20
@@ -164,40 +190,6 @@ func ResolveShortcut(file *os.File) (path string, err error) {
 	return path, nil
 }
 
-func (s *Shortcut) Resolve() error {
-	f, err := os.Open(s.Path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	tpath, err := ResolveShortcut(f)
-	if err != nil {
-		return err
-	}
-	if tpath == "" {
-		return fmt.Errorf("tpath is nil")
-	}
-	_, err = os.Stat(tpath)
-	if err != nil {
-		return err
-	}
-	var isdir bool
-	var parent string
-	isdir, err = isDir(tpath)
-	if err != nil {
-		isdir = false
-	}
-	if !isdir {
-		parent = filepath.Dir(tpath)
-	}
-	s.TPath = tpath
-	s.Args = "" // TODO
-	s.IsDir = isdir
-	s.Parent = parent
-
-	return nil
-}
-
 func (s Shortcut) Text() (text string) {
 	if s.IsDir {
 		text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
@@ -208,19 +200,18 @@ func (s Shortcut) Text() (text string) {
 	return
 }
 
-func NewShortcutList(dir string, origin Origin) ([]Shortcut, error) {
+func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 	shortcuts := make([]Shortcut, 0, len(files))
 	for _, file := range files {
-		shortcut, _ := NewShortcut(dir, file, origin)
-		err = shortcut.Resolve()
+		shortcut, err := NewShortcut(dir, file, origin)
 		if err != nil {
 			continue
 		}
-		shortcuts = append(shortcuts, *shortcut)
+		shortcuts = append(shortcuts, shortcut)
 	}
 
 	return shortcuts, nil
