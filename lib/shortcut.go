@@ -18,26 +18,18 @@ type Shortcut struct {
 	ModTime time.Time
 }
 
-func NewShortcut(dir string, path string, tpath string, modtime time.Time, org Origin) (s Shortcut, err error) {
-	s.Path = path
-	s.TPath = tpath
-	s.ModTime = modtime
-	s.Org = org
+func NewShortcut(path string, tpath string, args string, isdir bool, modtime time.Time, org Origin) (s Shortcut, err error) {
 	_, err = os.Stat(tpath)
 	if err != nil {
 		return s, err
 	}
-	isdir, err := isDir(tpath)
-	if err != nil {
-		isdir = false
-	}
-	var parent string
-	if !isdir {
-		parent = filepath.Dir(tpath)
-	}
-	s.Args = "" // TODO
+	s.Path = path
+	s.TPath = tpath
+	s.Args = args
 	s.IsDir = isdir
-	s.Parent = parent
+	s.Parent = ""
+	s.Org = org
+	s.ModTime = modtime
 	return s, nil
 }
 
@@ -64,56 +56,19 @@ func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
 			continue
 		}
 		defer f.Close()
-		tpath, err := ResolveShortcut(f)
+		tpath, isdir, args, err := ResolveShortcut(f)
 		if err != nil {
-			continue
-		}
-		if tpath == "" {
 			continue
 		}
 		finfo, err := dentry.Info()
 		if err != nil {
 			continue
 		}
-		shortcut, err := NewShortcut(dir, path, tpath, finfo.ModTime(), origin)
+		shortcut, err := NewShortcut(path, tpath, args, isdir, finfo.ModTime(), origin)
 		if err != nil {
 			continue
 		}
 		shortcuts = append(shortcuts, shortcut)
 	}
 	return shortcuts, nil
-}
-
-func isDir(tpath string) (bool, error) {
-	info, err := os.Stat(tpath)
-	if err != nil {
-		return false, err
-	}
-	if info.IsDir() {
-		return true, nil
-	} else {
-		return false, nil
-	}
-}
-
-func GetShortcutTexts(shortcuts []Shortcut) []string {
-	texts := make([]string, 0, len(shortcuts))
-	checkDuplicate := make(map[string]bool)
-	for _, s := range shortcuts {
-		key := strings.TrimSpace(s.TPath + s.Args)
-		if checkDuplicate[key] {
-			continue
-		}
-		// Add parent
-		if !s.IsDir {
-			if !checkDuplicate[s.Parent] {
-				texts = append(texts, fmt.Sprintf("%s %s", folderPrefix, s.Parent))
-				checkDuplicate[s.Parent] = true
-			}
-		}
-		texts = append(texts, s.Text())
-		checkDuplicate[key] = true
-	}
-
-	return texts
 }
