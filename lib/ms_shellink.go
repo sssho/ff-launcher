@@ -181,5 +181,5 @@ func ResolveShortcut(file *os.File) (path string, isdir bool, args string, err e
 		return "", false, "", err
 	}
 	args = "" // TODO
-	return path, af.FILE_ATTRIBUTE_DIRECTORY, args, nil
+	return path[:len(path)-1], af.FILE_ATTRIBUTE_DIRECTORY, args, nil
 }
