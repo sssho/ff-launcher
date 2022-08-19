@@ -114,71 +114,72 @@ func NewFileAttributesFlags(flag uint32) FileAttributesFlags {
 	return f
 }
 
-func ResolveShortcut(file *os.File) (path string, isdir bool, err error) {
+func ResolveShortcut(file *os.File) (path string, isdir bool, args string, err error) {
 	_, err = file.Seek(LINKFLAGS_OFFSET, io.SeekStart)
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	var LinkFlags uint32
 	err = binary.Read(file, binary.LittleEndian, &(LinkFlags))
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	lf := NewLinkFlags(LinkFlags)
 	if !lf.HasLinkInfo {
-		return "", false, fmt.Errorf("linkinfo not found")
+		return "", false, "", fmt.Errorf("linkinfo not found")
 	}
 	var FileAttributesFlags uint32
 	err = binary.Read(file, binary.LittleEndian, &(FileAttributesFlags))
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	af := NewFileAttributesFlags(FileAttributesFlags)
 	var LinkTargetIDListSize uint16
 	if lf.HasLinkTargetIDList {
 		_, err = file.Seek(HEADERSIZE, io.SeekStart)
 		if err != nil {
-			return "", false, err
+			return "", false, "", err
 		}
 		err = binary.Read(file, binary.LittleEndian, &(LinkTargetIDListSize))
 		if err != nil {
-			return "", false, err
+			return "", false, "", err
 		}
 	}
 	var LinkInfoStartAddr int64 = int64(HEADERSIZE + 2 + LinkTargetIDListSize)
 	_, err = file.Seek(LinkInfoStartAddr+8, io.SeekStart)
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	var LinkInfoFlags uint32
 	err = binary.Read(file, binary.LittleEndian, &(LinkInfoFlags))
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	VolumeIDAndLocalBasePath := (LinkInfoFlags & 1) == 1
 	if !VolumeIDAndLocalBasePath {
-		return "", false, fmt.Errorf("localbasepath not found")
+		return "", false, "", fmt.Errorf("localbasepath not found")
 	}
 	var LocalBasePathOffset uint32
 	_, err = file.Seek(LinkInfoStartAddr+16, io.SeekStart)
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	err = binary.Read(file, binary.LittleEndian, &(LocalBasePathOffset))
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	var LocalBasePathAddr int64 = int64(LinkInfoStartAddr + int64(LocalBasePathOffset))
 	_, err = file.Seek(LocalBasePathAddr, io.SeekStart)
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	// https://zenn.dev/mattn/articles/fd545a14b0ffdf
 	jr := transform.NewReader(file, japanese.ShiftJIS.NewDecoder())
 	br := bufio.NewReader(jr)
 	path, err = br.ReadString(0)
-	if err != nil {
-		return "", false, err
+	if err != nil || path == "" {
+		return "", false, "", err
 	}
-	return path, af.FILE_ATTRIBUTE_DIRECTORY, nil
+	args = "" // TODO
+	return path, af.FILE_ATTRIBUTE_DIRECTORY, args, nil
 }
