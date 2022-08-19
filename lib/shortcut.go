@@ -8,35 +8,24 @@ import (
 	"time"
 )
 
-type Shortcut struct {
-	TPath   string
-	IsDir   bool
-	ModTime time.Time
+type HistItem struct {
+	path       string
+	isDir      bool
+	lastAccess time.Time
 }
 
-func NewShortcut(tpath string, isdir bool, modtime time.Time) (s Shortcut, err error) {
-	_, err = os.Stat(tpath)
-	if err != nil {
-		return s, err
-	}
-	s.TPath = tpath
-	s.IsDir = isdir
-	s.ModTime = modtime
-	return s, nil
-}
-
-func (s Shortcut) Text() (text string) {
-	text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
+func (h HistItem) Text() (text string) {
+	text = fmt.Sprintf("%s %s", folderPrefix, h.path)
 	text = strings.TrimSpace(text)
 	return
 }
 
-func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
+func NewHistItems(dir string, origin Origin) ([]HistItem, error) {
 	dentries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	shortcuts := make([]Shortcut, 0, len(dentries))
+	histItems := make([]HistItem, 0, len(dentries))
 	for _, dentry := range dentries {
 		path := filepath.Join(dir, dentry.Name())
 		f, err := os.Open(path)
@@ -52,11 +41,11 @@ func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
 		if err != nil {
 			continue
 		}
-		shortcut, err := NewShortcut(tpath, isdir, finfo.ModTime())
+		_, err = os.Stat(tpath)
 		if err != nil {
 			continue
 		}
-		shortcuts = append(shortcuts, shortcut)
+		histItems = append(histItems, HistItem{tpath, isdir, finfo.ModTime()})
 	}
-	return shortcuts, nil
+	return histItems, nil
 }

@@ -48,7 +48,7 @@ func SetupCache(config *Config) {
 	config.CachePath = filepath.Join(defaultDir, name)
 }
 
-func WriteCache(path string, s []Shortcut) error {
+func WriteCache(path string, items []HistItem) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -56,27 +56,28 @@ func WriteCache(path string, s []Shortcut) error {
 	defer f.Close()
 	e := json.NewEncoder(f)
 	e.SetIndent("", "  ")
-	err = e.Encode(s)
+	err = e.Encode(items)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func ReadCache(path string) (s []Shortcut, err error) {
+func ReadCache(path string) (items []HistItem, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	d := json.NewDecoder(f)
-	err = d.Decode(&s)
+	err = d.Decode(&items)
 	if err != nil {
 		return nil, err
 	}
-	return s, err
+	return items, err
 }
 
-func RunFF(source *Shortcuts, query string) (string, error) {
+func RunFF(source []HistItem, query string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
@@ -93,7 +94,7 @@ func RunFF(source *Shortcuts, query string) (string, error) {
 	go func() {
 		defer in.Close()
 
-		for _, s := range source.unique {
+		for _, s := range source {
 			io.WriteString(in, s.Text()+"\n")
 		}
 	}()
@@ -126,116 +127,104 @@ func RunApp(path string) error {
 	return nil
 }
 
-type Shortcuts struct {
-	recent []Shortcut
-	cache  []Shortcut
-	user   []Shortcut
-	merge  []Shortcut
-	unique []Shortcut
-}
-
-func (s *Shortcuts) Merge() {
-	s.merge = make([]Shortcut, 0, len(s.recent)+len(s.cache)+len(s.user))
-	s.merge = append(s.merge, s.cache...)
-	s.merge = append(s.merge, s.recent...)
-	s.merge = append(s.merge, s.user...)
-}
-
-func (s *Shortcuts) Sort() {
-	sort.Slice(s.merge, func(i, j int) bool {
-		return s.merge[i].ModTime.After(s.merge[j].ModTime)
+func SortHistItems(h []HistItem) {
+	sort.Slice(h, func(i, j int) bool {
+		return h[i].lastAccess.After(h[j].lastAccess)
 	})
 }
 
-func (s *Shortcuts) Unique() {
-	s.unique = make([]Shortcut, 0, len(s.merge))
-	uni := make(map[string]bool)
-	for _, v := range s.merge {
-		t := v.Text()
-		if _, ok := uni[t]; ok {
-			continue
-		}
-		uni[t] = true
-		s.unique = append(s.unique, v)
-	}
-}
-
-func ReadDir(dir string, org Origin) (shortcuts []Shortcut, err error) {
-	sc, err := NewShortcuts(dir, org)
+func FindFromDir(dir string, org Origin) (items []HistItem, err error) {
+	items, err = NewHistItems(dir, org)
 	if err != nil {
 		return nil, err
 	}
-	return sc, nil
+	return items, nil
 }
 
-func FindFromRecent() (shortcuts []Shortcut, err error) {
+func FindFromRecent() (items []HistItem, err error) {
 	recentDir, err := GetRecentDir()
 	if err != nil {
 		return nil, err
 	}
-	sc, err := ReadDir(recentDir, Recent)
+	items, err = FindFromDir(recentDir, Recent)
 	if err != nil {
 		return nil, err
 	}
-	return sc, nil
+	return items, nil
 }
 
-func FindFromUser(folders []string) (shortcuts []Shortcut, err error) {
-	var sc []Shortcut
+func FindFromUser(folders []string) (items []HistItem, err error) {
 	for _, folder := range folders {
-		sc_, err := ReadDir(folder, User)
+		tmpItems, err := FindFromDir(folder, User)
 		if err != nil {
 			return nil, err
 		}
-		sc = append(sc, sc_...)
+		items = append(items, tmpItems...)
 	}
-	return sc, nil
+	return items, nil
 }
 
-func FindShortcuts(config Config) (s *Shortcuts, err error) {
-	var shortcuts *Shortcuts = &Shortcuts{}
+func contains(h HistItem, hitems []HistItem) bool {
+	for _, hitem := range hitems {
+		if h.path == hitem.path {
+			return true
+		}
+	}
+	return false
+}
+
+func FindHistItems(config Config) (items []HistItem, err error) {
+	var tmpItems []HistItem
 	if config.EnableCache {
-		shortcuts.cache, _ = ReadCache(config.CachePath)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("read cache error")
-		// }
+		items, _ = ReadCache(config.CachePath)
 	}
 	if config.EnableRecent {
-		shortcuts.recent, err = FindFromRecent()
+		tmpItems, err = FindFromRecent()
 		if err != nil {
 			return nil, fmt.Errorf("read recent error")
 		}
+		for _, item := range tmpItems {
+			if found := contains(item, items); !found {
+				items = append(items, item)
+			}
+		}
 	}
 	if config.EnableUser {
-		shortcuts.user, err = FindFromUser(config.Folders)
+		tmpItems, err = FindFromUser(config.Folders)
 		if err != nil {
 			return nil, fmt.Errorf("read user error")
 		}
+		for _, item := range tmpItems {
+			if found := contains(item, items); !found {
+				items = append(items, item)
+			}
+		}
 	}
-	shortcuts.Merge()
-	shortcuts.Sort()
-	shortcuts.Unique()
-
-	return shortcuts, nil
+	SortHistItems(items)
+	return items, nil
 }
 
 func Run(debug bool) error {
 	config, _ := LoadConfig()
 	SetupCache(&config)
-	shortcuts, err := FindShortcuts(config)
+	histItems, err := FindHistItems(config)
 	if err != nil {
 		return err
 	}
-	err = WriteCache(config.CachePath, shortcuts.unique)
-	if err != nil {
-		return err
-	}
+	// err = WriteCache(config.CachePath, shortcuts.unique)
+	// if err != nil {
+	// 	return err
+	// }
 	query := config.DefaultQuery
 	if debug {
-		return nil
+		for i, s := range histItems {
+			fmt.Println(i, s.path)
+			// fmt.Printf("%d %+v\n", i, s)
+		}
+		return err
 	}
 	for {
-		selected, err := RunFF(shortcuts, query)
+		selected, err := RunFF(histItems, query)
 		if err != nil {
 			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
 			continue
