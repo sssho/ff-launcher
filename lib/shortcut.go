@@ -1,12 +1,56 @@
 package lib
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
+
+type History struct {
+	items []HistItem
+}
+
+func (h *History) Append(i HistItem) {
+
+}
+
+func (h *History) Sort() {
+	sort.Slice(h.items, func(i, j int) bool {
+		return h.items[i].lastAccess.After(h.items[j].lastAccess)
+	})
+}
+
+func (h History) Save(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	e := json.NewEncoder(f)
+	e.SetIndent("", "  ")
+	err = e.Encode(h.items)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *History) Load(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	d := json.NewDecoder(f)
+	err = d.Decode(&h.items)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 type HistItem struct {
 	path       string
@@ -20,32 +64,11 @@ func (h HistItem) Text() (text string) {
 	return
 }
 
-func NewHistItems(dir string, origin Origin) ([]HistItem, error) {
-	dentries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
+func contains(h HistItem, hitems []HistItem) bool {
+	for _, hitem := range hitems {
+		if h.path == hitem.path {
+			return true
+		}
 	}
-	histItems := make([]HistItem, 0, len(dentries))
-	for _, dentry := range dentries {
-		path := filepath.Join(dir, dentry.Name())
-		f, err := os.Open(path)
-		if err != nil {
-			continue
-		}
-		defer f.Close()
-		tpath, isdir, _, err := ResolveShortcut(f)
-		if err != nil {
-			continue
-		}
-		finfo, err := dentry.Info()
-		if err != nil {
-			continue
-		}
-		_, err = os.Stat(tpath)
-		if err != nil {
-			continue
-		}
-		histItems = append(histItems, HistItem{tpath, isdir, finfo.ModTime()})
-	}
-	return histItems, nil
+	return false
 }

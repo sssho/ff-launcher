@@ -26,6 +26,7 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{nil, "", true, true, true, "", false, ""}, err
 	}
+	defer file.Close()
 	dec := json.NewDecoder(file)
 	var config Config
 	err = dec.Decode(&config)
