@@ -9,36 +9,24 @@ import (
 )
 
 type Shortcut struct {
-	Path    string
 	TPath   string
-	Args    string
 	IsDir   bool
-	Parent  string
-	Org     Origin
 	ModTime time.Time
 }
 
-func NewShortcut(path string, tpath string, args string, isdir bool, modtime time.Time, org Origin) (s Shortcut, err error) {
+func NewShortcut(tpath string, isdir bool, modtime time.Time) (s Shortcut, err error) {
 	_, err = os.Stat(tpath)
 	if err != nil {
 		return s, err
 	}
-	s.Path = path
 	s.TPath = tpath
-	s.Args = args
 	s.IsDir = isdir
-	s.Parent = ""
-	s.Org = org
 	s.ModTime = modtime
 	return s, nil
 }
 
 func (s Shortcut) Text() (text string) {
-	if s.IsDir {
-		text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
-	} else {
-		text = fmt.Sprintf("%s %s %s", filePrefix, s.TPath, s.Args)
-	}
+	text = fmt.Sprintf("%s %s", folderPrefix, s.TPath)
 	text = strings.TrimSpace(text)
 	return
 }
@@ -56,7 +44,7 @@ func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
 			continue
 		}
 		defer f.Close()
-		tpath, isdir, args, err := ResolveShortcut(f)
+		tpath, isdir, _, err := ResolveShortcut(f)
 		if err != nil {
 			continue
 		}
@@ -64,7 +52,7 @@ func NewShortcuts(dir string, origin Origin) ([]Shortcut, error) {
 		if err != nil {
 			continue
 		}
-		shortcut, err := NewShortcut(path, tpath, args, isdir, finfo.ModTime(), origin)
+		shortcut, err := NewShortcut(tpath, isdir, finfo.ModTime())
 		if err != nil {
 			continue
 		}
