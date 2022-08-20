@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 )
 
-func FindFromDir(dir string) (items []HistItem, err error) {
+func FindFromDir(dir string) (hist History, err error) {
 	dentries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	items = make([]HistItem, 0, len(dentries))
+	hist = make(History, 0, len(dentries))
 	for _, dentry := range dentries {
 		path := filepath.Join(dir, dentry.Name())
 		f, err := os.Open(path)
@@ -31,61 +31,57 @@ func FindFromDir(dir string) (items []HistItem, err error) {
 		if err != nil {
 			continue
 		}
-		items = append(items, HistItem{tpath, isdir, finfo.ModTime()})
+		hist = append(hist, HistItem{tpath, isdir, finfo.ModTime()})
 	}
-	return items, nil
+	return hist, nil
 }
 
-func FindFromRecent() (items []HistItem, err error) {
+func FindFromRecent() (hist History, err error) {
 	recentDir, err := GetRecentDir()
 	if err != nil {
 		return nil, err
 	}
-	items, err = FindFromDir(recentDir)
+	hist, err = FindFromDir(recentDir)
 	if err != nil {
 		return nil, err
 	}
-	return items, nil
+	return hist, nil
 }
 
-func FindFromUser(folders []string) (items []HistItem, err error) {
+func FindFromUser(folders []string) (hist History, err error) {
 	for _, folder := range folders {
 		tmpItems, err := FindFromDir(folder)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, tmpItems...)
+		hist = append(hist, tmpItems...)
 	}
-	return items, nil
+	return hist, nil
 }
 
 func FindHistory(config Config) (hist History, err error) {
-	var tmpItems []HistItem
+	var tmpHist History
 	if config.EnableCache {
 		_ = hist.Load(config.CachePath)
 	}
+	hist.SortByPath()
 	if config.EnableRecent {
-		tmpItems, err = FindFromRecent()
+		tmpHist, err = FindFromRecent()
 		if err != nil {
 			return History{}, fmt.Errorf("read recent error")
 		}
-		for _, item := range tmpItems {
-			if found := contains(item, hist.items); !found {
-				hist.items = append(hist.items, item)
-			}
+		for i := range tmpHist {
+			hist.Merge(tmpHist[i])
 		}
 	}
 	if config.EnableUser {
-		tmpItems, err = FindFromUser(config.Folders)
+		tmpHist, err = FindFromUser(config.Folders)
 		if err != nil {
 			return History{}, fmt.Errorf("read user error")
 		}
-		for _, item := range tmpItems {
-			if found := contains(item, hist.items); !found {
-				hist.items = append(hist.items, item)
-			}
+		for i := range tmpHist {
+			hist.Merge(tmpHist[i])
 		}
 	}
-	hist.Sort()
 	return hist, nil
 }

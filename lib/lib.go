@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,14 +53,6 @@ func SelectByFF(r io.Reader, query string) (string, error) {
 	}
 	cmd.Stdin = r
 	cmd.Stderr = os.Stderr
-	// in, _ := cmd.StdinPipe()
-	// go func() {
-	// 	defer in.Close()
-
-	// 	for _, s := range source {
-	// 		io.WriteString(in, s.Text()+"\n")
-	// 	}
-	// }()
 	result, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -98,22 +91,24 @@ func Run(debug bool) error {
 	if err != nil {
 		return err
 	}
-	// err = WriteCache(config.CachePath, shortcuts.unique)
-	// if err != nil {
-	// 	return err
-	// }
 	query := config.DefaultQuery
 	if debug {
-		for i, s := range hist.items {
+		for i, s := range hist {
 			fmt.Println(i, s.path)
 			// fmt.Printf("%d %+v\n", i, s)
 		}
+		// TestHistory()
+		err = hist.Save(config.CachePath)
+		if err != nil {
+			log.Fatal("save error", err)
+		}
 		return err
 	}
+	hist.SortByTime()
 	var b bytes.Buffer
 	for {
 		b.Reset()
-		for _, h := range hist.items {
+		for _, h := range hist {
 			_, err = fmt.Fprintf(&b, "%s\n", h.path)
 			if err != nil {
 				return err
