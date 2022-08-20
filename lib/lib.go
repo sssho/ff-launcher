@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -38,27 +39,27 @@ func SetupCache(config *Config) {
 	config.CachePath = filepath.Join(defaultDir, name)
 }
 
-func SelectByFF(source []HistItem, query string) (string, error) {
+func SelectByFF(r io.Reader, query string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
 	}
-
 	var cmd *exec.Cmd
 	if query == "" {
 		cmd = exec.Command(ff)
 	} else {
 		cmd = exec.Command(ff, "--query", query)
 	}
+	cmd.Stdin = r
 	cmd.Stderr = os.Stderr
-	in, _ := cmd.StdinPipe()
-	go func() {
-		defer in.Close()
+	// in, _ := cmd.StdinPipe()
+	// go func() {
+	// 	defer in.Close()
 
-		for _, s := range source {
-			io.WriteString(in, s.Text()+"\n")
-		}
-	}()
+	// 	for _, s := range source {
+	// 		io.WriteString(in, s.Text()+"\n")
+	// 	}
+	// }()
 	result, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -73,6 +74,8 @@ func RunApp(path string) error {
 		fileName = strings.TrimSpace(strings.Replace(path, folderPrefix, "", -1))
 	} else if strings.HasPrefix(path, filePrefix) {
 		fileName = strings.TrimSpace(strings.Replace(path, filePrefix, "", -1))
+	} else {
+		fileName = path
 	}
 	cmd := exec.Command("cmd.exe")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -107,8 +110,16 @@ func Run(debug bool) error {
 		}
 		return err
 	}
+	var b bytes.Buffer
 	for {
-		selected, err := SelectByFF(hist.items, query)
+		b.Reset()
+		for _, h := range hist.items {
+			_, err = fmt.Fprintf(&b, "%s\n", h.path)
+			if err != nil {
+				return err
+			}
+		}
+		selected, err := SelectByFF(&b, query)
 		if err != nil {
 			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
 			continue
