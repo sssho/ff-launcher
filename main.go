@@ -51,11 +51,16 @@ func doMemprof(path string) {
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 var debug = flag.String("debug", "", "do not run ff")
+var tui = flag.String("tui", "", "run tui")
 
 func main() {
 	flag.Parse()
 	cpuprof := *cpuprofile != ""
 	memprof := *memprofile != ""
+	os.Exit(lib.RunTui())
+	if *tui != "" {
+		os.Exit(lib.RunTui())
+	}
 	if cpuprof {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {

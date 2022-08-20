@@ -31,7 +31,7 @@ func FindFromDir(dir string) (hist History, err error) {
 		if err != nil {
 			continue
 		}
-		hist = append(hist, HistItem{tpath, isdir, finfo.ModTime()})
+		hist = append(hist, HistItem{filepath.ToSlash(tpath), isdir, finfo.ModTime()})
 	}
 	return hist, nil
 }

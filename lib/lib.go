@@ -40,17 +40,19 @@ func SetupCache(config *Config) {
 	config.CachePath = filepath.Join(defaultDir, name)
 }
 
-func SelectByFF(r io.Reader, query string) (string, error) {
+func SelectByFF(r io.Reader, query string, prompt string) (string, error) {
 	ff, err := exec.LookPath("peco")
 	if err != nil {
 		return "", err
 	}
-	var cmd *exec.Cmd
-	if query == "" {
-		cmd = exec.Command(ff)
-	} else {
-		cmd = exec.Command(ff, "--query", query)
+	args := []string{"cmd", "/c", ff}
+	if query != "" {
+		args = append(args, []string{"--query", query}...)
 	}
+	if prompt != "" {
+		args = append(args, []string{"--prompt", prompt}...)
+	}
+	cmd := exec.Command("cmd", args...)
 	cmd.Stdin = r
 	cmd.Stderr = os.Stderr
 	result, err := cmd.Output()
@@ -58,7 +60,7 @@ func SelectByFF(r io.Reader, query string) (string, error) {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(result)), nil
+	return filepath.FromSlash(strings.TrimSpace(string(result))), nil
 }
 
 func RunApp(path string) error {
@@ -114,7 +116,7 @@ func Run(debug bool) error {
 				return err
 			}
 		}
-		selected, err := SelectByFF(&b, query)
+		selected, err := SelectByFF(&b, query, "")
 		if err != nil {
 			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
 			continue
