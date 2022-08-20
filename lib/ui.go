@@ -34,8 +34,8 @@ const (
 
 const (
 	BLANK_LINE = "  "
-	PROMPT     = "ff >"
-	STATUS     = "status:"
+	PROMPT     = " ff > "
+	STATUS     = " status:"
 	CMDLINES   = 15
 )
 
@@ -62,21 +62,21 @@ func flushAfter() {
 }
 
 func PrintCommands(s SortType) {
-	fmt.Printf("[%2v] %v\n", CMD_ALL, "ALL Files/Folders")
-	fmt.Printf("[%2v] %v\n", CMD_FOLDER, "Folders")
-	fmt.Printf("[%2v] %v\n", CMD_XLSX, "Excel")
-	fmt.Printf("[%2v] %v\n", CMD_WORD, "Word")
-	fmt.Printf("[%2v] %v\n", CMD_PPT, "PowerPoint")
-	fmt.Printf("[%2v] %v\n", CMD_PDF, "PDF")
-	fmt.Printf("[%2v] %v\n", CMD_VISIO, "Visio")
-	fmt.Printf("[%2v] %v\n", CMD_TXT, "Txt")
+	fmt.Printf(" [%2v] %v\n", CMD_ALL, "ALL Files/Folders")
+	fmt.Printf(" [%2v] %v\n", CMD_FOLDER, "Folders")
+	fmt.Printf(" [%2v] %v\n", CMD_XLSX, "Excel")
+	fmt.Printf(" [%2v] %v\n", CMD_WORD, "Word")
+	fmt.Printf(" [%2v] %v\n", CMD_PPT, "PowerPoint")
+	fmt.Printf(" [%2v] %v\n", CMD_PDF, "PDF")
+	fmt.Printf(" [%2v] %v\n", CMD_VISIO, "Visio")
+	fmt.Printf(" [%2v] %v\n", CMD_TXT, "Txt")
 	fmt.Println(BLANK_LINE)
-	fmt.Printf("[%2v] %v\n", CMD_FOCUS_XLSX, "Focus opened xlsx(TBD)")
-	fmt.Printf("[%2v] %v\n", CMD_FOCUS_FOLDER, "Focus opened folder(TBD)")
+	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_XLSX, "Focus opened xlsx(TBD)")
+	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_FOLDER, "Focus opened folder(TBD)")
 	fmt.Println(BLANK_LINE)
-	fmt.Printf("[%2v] %v %v\n", CMD_SORT, "Sort Type: ", s)
-	fmt.Printf("[%2v] %v\n", CMD_RELOAD, "Reload(TBD)")
-	fmt.Printf("[%2v] %v\n", CMD_QUIT, "Quit")
+	fmt.Printf(" [%2v] %v %v\n", CMD_SORT, "Sort Type: ", s)
+	fmt.Printf(" [%2v] %v\n", CMD_RELOAD, "Reload(TBD)")
+	fmt.Printf(" [%2v] %v\n", CMD_QUIT, "Quit")
 }
 
 type Action func(app *App) (status string, err error)
@@ -107,7 +107,7 @@ func NewApp(c Config) *App {
 	var app App
 	app.config = c
 	app.hist = History{}
-	app.sort = SORT_BY_PATH
+	app.sort = SORT_BY_TIME
 	app.action = make(map[string]Action)
 	app.action[CMD_ALL] = actionAll
 	app.action[CMD_XLSX] = actionXlsx
@@ -250,8 +250,10 @@ func actionTxt(app *App) (status string, err error) {
 func actionSort(app *App) (status string, err error) {
 	if app.sort == SORT_BY_PATH {
 		app.sort = SORT_BY_TIME
+		app.hist.SortByTime()
 	} else {
 		app.sort = SORT_BY_PATH
+		app.hist.SortByPath()
 	}
 	return "sort type is set", nil
 }
@@ -323,13 +325,6 @@ func RunTui() int {
 			killLineAll()
 			flushAfter()
 			break
-		}
-		if status == "sort type is set" {
-			if app.sort == SORT_BY_PATH {
-				app.hist.SortByPath()
-			} else {
-				app.hist.SortByTime()
-			}
 		}
 		flushAfter()
 		cursorUp(1)
