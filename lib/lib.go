@@ -1,10 +1,8 @@
 package lib
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,27 +15,8 @@ const (
 	filePrefix   = "[file  ]"
 )
 
-func GetRecentDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf(`%s\AppData\Roaming\Microsoft\Windows\Recent`, home), nil
-}
-
-func SetupCache(config *Config) {
-	name := "ffl_cache.json"
-	if _, err := os.Stat(config.CacheDir); !os.IsNotExist(err) {
-		config.CachePath = filepath.Join(config.CacheDir, name)
-		return
-	}
-	// default
-	defaultDir := filepath.Join(os.Getenv("AppData"), "ffl")
-	err := os.Mkdir(defaultDir, 0750)
-	if err != nil && !os.IsExist(err) {
-		return
-	}
-	config.CachePath = filepath.Join(defaultDir, name)
+func RecentDir() string {
+	return filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Recent")
 }
 
 func SelectByFF(r io.Reader, query string, prompt string) (string, error) {
@@ -82,56 +61,6 @@ func RunApp(path string) error {
 	err := cmd.Start()
 	if err != nil {
 		return err
-	}
-	return nil
-}
-
-func Run(debug bool) error {
-	config, _ := LoadConfig()
-	SetupCache(&config)
-	hist, err := FindHistory(config)
-	if err != nil {
-		return err
-	}
-	query := config.DefaultQuery
-	if debug {
-		for i, s := range hist {
-			fmt.Println(i, s.path)
-			// fmt.Printf("%d %+v\n", i, s)
-		}
-		// TestHistory()
-		err = hist.Save(config.CachePath)
-		if err != nil {
-			log.Fatal("save error", err)
-		}
-		return err
-	}
-	hist.SortByTime()
-	var b bytes.Buffer
-	for {
-		b.Reset()
-		for _, h := range hist {
-			_, err = fmt.Fprintf(&b, "%s\n", h.path)
-			if err != nil {
-				return err
-			}
-		}
-		selected, err := SelectByFF(&b, query, "")
-		if err != nil {
-			query = "すいませんもう一度お願いします (Ctrl+uでクリア)"
-			continue
-		}
-		if selected == "" {
-			continue
-		}
-		query = config.DefaultQuery
-		err = RunApp(selected)
-		if err != nil {
-			return fmt.Errorf("RunAPP: selected [%s], %w", selected, err)
-		}
-		if config.OneShot {
-			break
-		}
 	}
 	return nil
 }

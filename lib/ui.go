@@ -105,9 +105,12 @@ type App struct {
 	action map[string]Action
 }
 
-func NewApp(c Config) *App {
+func NewApp() (a *App, err error) {
 	var app App
-	app.config = c
+	err = app.config.Load()
+	if err != nil {
+		return nil, err
+	}
 	app.hist = History{}
 	app.sort = SORT_BY_TIME
 	app.action = make(map[string]Action)
@@ -124,7 +127,7 @@ func NewApp(c Config) *App {
 	app.action[CMD_FOCUS_FOLDER] = actionFocusFolder
 	app.action[CMD_RELOAD] = actionReload
 	app.action[CMD_QUIT] = actionQuit
-	return &app
+	return &app, nil
 }
 
 func actionSelectbyFF(r io.Reader, prompt string) (status string, err error) {
@@ -320,12 +323,14 @@ func (app *App) Exec(cmd string) (status string, err error) {
 	return status, nil
 }
 
-func RunTui() int {
-	config, _ := LoadConfig()
-	app := NewApp(config)
+func Run() error {
+	app, err := NewApp()
+	if err != nil {
+		return err
+	}
 	hist, err := FindHistory(app.config)
 	if err != nil {
-		panic("hist error!")
+		return err
 	}
 	app.hist = hist
 	plen := len(PROMPT)
@@ -342,12 +347,10 @@ func RunTui() int {
 		cursorUp(4 + CMDLINES)
 		cursorRight(plen)
 		if !scanner.Scan() {
-			fmt.Fprintln(os.Stderr, "read error!")
-			break
+			return errors.New("canceled")
 		}
 		if scanner.Err() != nil {
-			fmt.Fprintln(os.Stderr, scanner.Err())
-			break
+			return scanner.Err()
 		}
 		status, _ = app.Exec(scanner.Text())
 		if status == "Q" {
@@ -360,5 +363,5 @@ func RunTui() int {
 		cursorUp(1)
 		killLineAfter()
 	}
-	return 0
+	return nil
 }

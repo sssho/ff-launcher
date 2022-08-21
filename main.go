@@ -1,13 +1,10 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path"
-	"runtime"
-	"runtime/pprof"
 	"time"
 
 	"github.com/sssho/ffl/lib"
@@ -36,52 +33,15 @@ func writeLog(logMessage error) error {
 	return nil
 }
 
-func doMemprof(path string) {
-	f, err := os.Create(path)
-	if err != nil {
-		log.Fatal("could not create memory profile: ", err)
+func run() int {
+	if err := lib.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		time.Sleep(time.Second * 10)
+		return 1
 	}
-	defer f.Close() // error handling omitted for example
-	runtime.GC()    // get up-to-date statistics
-	if err := pprof.WriteHeapProfile(f); err != nil {
-		log.Fatal("could not write memory profile: ", err)
-	}
+	return 0
 }
 
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
-var debug = flag.String("debug", "", "do not run ff")
-var tui = flag.String("tui", "", "run tui")
-
 func main() {
-	flag.Parse()
-	cpuprof := *cpuprofile != ""
-	memprof := *memprofile != ""
-	os.Exit(lib.RunTui())
-	if *tui != "" {
-		os.Exit(lib.RunTui())
-	}
-	if cpuprof {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal("could not create CPU profile: ", err)
-		}
-		defer f.Close() // error handling omitted for example
-		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatal("could not start CPU profile: ", err)
-		}
-		// defer pprof.StopCPUProfile()
-	}
-	err := lib.Run(cpuprof || memprof || *debug != "")
-	if err != nil {
-		_ = writeLog(err)
-		os.Exit(1)
-	}
-	if memprof {
-		doMemprof(*memprofile)
-	}
-	if cpuprof {
-		pprof.StopCPUProfile()
-	}
-	os.Exit(0)
+	os.Exit(run())
 }

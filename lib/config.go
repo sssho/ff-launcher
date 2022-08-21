@@ -7,31 +7,30 @@ import (
 )
 
 type Config struct {
-	Folders      []string
-	CacheDir     string
-	EnableRecent bool
-	EnableUser   bool
-	EnableCache  bool
-	DefaultQuery string
-	OneShot      bool
-	CachePath    string
+	EnableRecent bool     `json:"enable_recent"`
+	EnableUser   bool     `json:"enable_user"`
+	EnableHist   bool     `json:"enable_hist"`
+	Folders      []string `json:"folders"`
+	HistDir      string
 }
 
-func LoadConfig() (Config, error) {
-	exePath, err := os.Executable()
+const HISTFILE = "fflhist.json"
+
+func (c *Config) Load() error {
+	path := filepath.Join(os.Getenv("APPDATA"), "ffl", "fflconf.json")
+	file, err := os.Open(path)
 	if err != nil {
-		return Config{nil, "", true, true, true, "", false, ""}, err
-	}
-	file, err := os.Open(filepath.Join(filepath.Dir(exePath), "fflconf.json"))
-	if err != nil {
-		return Config{nil, "", true, true, true, "", false, ""}, err
+		c.EnableRecent = true
+		c.EnableUser = false
+		c.EnableHist = false
+		c.Folders = nil
+		return nil
 	}
 	defer file.Close()
 	dec := json.NewDecoder(file)
-	var config Config
-	err = dec.Decode(&config)
+	err = dec.Decode(c)
 	if err != nil {
-		return config, err
+		return err
 	}
-	return config, nil
+	return nil
 }

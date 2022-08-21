@@ -37,11 +37,7 @@ func FindFromDir(dir string) (hist History, err error) {
 }
 
 func FindFromRecent() (hist History, err error) {
-	recentDir, err := GetRecentDir()
-	if err != nil {
-		return nil, err
-	}
-	hist, err = FindFromDir(recentDir)
+	hist, err = FindFromDir(RecentDir())
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +57,8 @@ func FindFromUser(folders []string) (hist History, err error) {
 
 func FindHistory(config Config) (hist History, err error) {
 	var tmpHist History
-	if config.EnableCache {
-		_ = hist.Load(config.CachePath)
+	if config.EnableHist {
+		_ = hist.Load(filepath.Join(config.HistDir, HISTFILE))
 	}
 	hist.SortByPath()
 	if config.EnableRecent {
