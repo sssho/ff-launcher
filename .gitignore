@@ -18,3 +18,7 @@ memprof*
 cpuprof*
 
 deploy.sh
+
+*.code-workspace
+prof/
+tmp/
