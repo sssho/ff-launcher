@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	ole "github.com/go-ole/go-ole"
 	"github.com/mattn/go-colorable"
 )
 
@@ -71,10 +73,10 @@ func PrintCommands(s SortType) {
 	fmt.Printf(" [%2v] %v\n", CMD_VISIO, "Visio")
 	fmt.Printf(" [%2v] %v\n", CMD_TXT, "Txt")
 	fmt.Println(BLANK_LINE)
-	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_XLSX, "Focus opened xlsx(TBD)")
+	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_XLSX, "Focus opened xlsx")
 	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_FOLDER, "Focus opened folder(TBD)")
 	fmt.Println(BLANK_LINE)
-	fmt.Printf(" [%2v] %v %v\n", CMD_SORT, "Sort Type: ", s)
+	fmt.Printf(" [%2v] %v %v\n", CMD_SORT, "Sort Type:", s)
 	fmt.Printf(" [%2v] %v\n", CMD_RELOAD, "Reload(TBD)")
 	fmt.Printf(" [%2v] %v\n", CMD_QUIT, "Quit")
 }
@@ -259,7 +261,35 @@ func actionSort(app *App) (status string, err error) {
 }
 
 func actionFocusXlsx(app *App) (status string, err error) {
-	return "TBD!", nil
+	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED|ole.COINIT_DISABLE_OLE1DDE)
+	defer ole.CoUninitialize()
+	excel, err := NewExcel()
+	if err != nil {
+		return "No excel found!", err
+	}
+	names, err := excel.OpenedWookBookNames()
+	if err != nil {
+		return "excel open error!", err
+	}
+	var b bytes.Buffer
+	for _, name := range names {
+		_, err = fmt.Fprintf(&b, "%s\n", filepath.ToSlash(name))
+		if err != nil {
+			return "internal error", err
+		}
+	}
+	name, err := SelectByFF(&b, "", "opened excel >")
+	if err != nil {
+		return "ff error! try again..", err
+	}
+	if name == "" {
+		return "selected is empty", errors.New("hoge")
+	}
+	err = excel.ActivateWorkBook(strings.TrimSpace(filepath.FromSlash(name)))
+	if err != nil {
+		return "excel activate error!", err
+	}
+	return "excel focus done", nil
 }
 
 func actionFocusFolder(app *App) (status string, err error) {
