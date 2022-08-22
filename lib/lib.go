@@ -24,14 +24,21 @@ func SelectByFF(r io.Reader, query string, prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	args := []string{"cmd", "/c", ff}
+	args := []string{}
 	if query != "" {
 		args = append(args, []string{"--query", query}...)
 	}
 	if prompt != "" {
 		args = append(args, []string{"--prompt", prompt}...)
 	}
-	cmd := exec.Command("cmd", args...)
+	cmd := exec.Cmd{
+		Path: ff,
+		Args: args,
+		SysProcAttr: &syscall.SysProcAttr{
+			CreationFlags:    0x10, // CREATE_NEW_CONSOLE,
+			NoInheritHandles: false,
+		},
+	}
 	cmd.Stdin = r
 	cmd.Stderr = os.Stderr
 	result, err := cmd.Output()
