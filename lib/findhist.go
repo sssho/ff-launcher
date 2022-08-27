@@ -12,6 +12,7 @@ func FindFromDir(dir string) (hist History, err error) {
 		return nil, err
 	}
 	hist = make(History, 0, len(dentries))
+	var tpath string
 	for _, dentry := range dentries {
 		path := filepath.Join(dir, dentry.Name())
 		f, err := os.Open(path)
@@ -19,15 +20,20 @@ func FindFromDir(dir string) (hist History, err error) {
 			continue
 		}
 		defer f.Close()
-		tpath, isdir, _, err := ResolveShortcut(f)
+		localpath, netpath, isdir, _, err := ResolveShortcut(f)
+		if err != nil {
+			continue
+		}
+		if localpath == "" {
+			tpath = netpath
+		} else {
+			tpath = localpath
+		}
+		_, err = os.Stat(tpath)
 		if err != nil {
 			continue
 		}
 		finfo, err := dentry.Info()
-		if err != nil {
-			continue
-		}
-		_, err = os.Stat(tpath)
 		if err != nil {
 			continue
 		}

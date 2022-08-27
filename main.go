@@ -36,7 +36,6 @@ func writeLog(logMessage error) error {
 func run() int {
 	if err := lib.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		time.Sleep(time.Second * 10)
 		return 1
 	}
 	return 0

@@ -335,7 +335,7 @@ func Run() error {
 	app.hist = hist
 	plen := len(PROMPT)
 	scanner := bufio.NewScanner(os.Stdin)
-	status := "hello!"
+	status := ""
 	fmt.Fprintln(out, logo)
 	fmt.Println("")
 	for {

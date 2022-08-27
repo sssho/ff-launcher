@@ -2,17 +2,25 @@ package lib
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 )
 
 const LINKFLAGS_OFFSET = 20
 const HEADERSIZE = 0x4c
+
+type Header struct {
+	LinkFlags           uint32
+	FileAttributesFlags uint32
+}
 
 type LinkFlags struct {
 	HasLinkTargetIDList         bool
@@ -76,6 +84,27 @@ func NewLinkFlags(flag uint32) LinkFlags {
 	return l
 }
 
+type LinkTargetIDList struct {
+	IDListSize uint16
+}
+
+type LinkInfo struct {
+	LinkInfoSize                    uint32
+	LinkInfoFlags                   uint32
+	LocalBasePathOffset             uint32
+	LocalBasePath                   string
+	CommonNetworkRelativeLinkOffset uint32
+}
+
+type CommonNetworkRelativeLink struct {
+	CommonNetworkRelativeLinkSize  uint32
+	CommonNetworkRelativeLinkFlags uint32
+	NetNameOffset                  uint32
+	DeviceNameOffset               uint32
+	NetName                        string
+	DeviceName                     string
+}
+
 type FileAttributesFlags struct {
 	FILE_ATTRIBUTE_READONLY            bool
 	FILE_ATTRIBUTE_HIDDEN              bool
@@ -114,72 +143,251 @@ func NewFileAttributesFlags(flag uint32) FileAttributesFlags {
 	return f
 }
 
-func ResolveShortcut(file *os.File) (path string, isdir bool, args string, err error) {
+type StringData struct {
+	NAME_STRING            string
+	RELATIVE_PATH          string
+	WORKING_DIR            string
+	COMMAND_LINE_ARGUMENTS string
+	ICON_LOCATION          string
+}
+
+func ParseHeader(file *os.File) (h Header, err error) {
 	_, err = file.Seek(LINKFLAGS_OFFSET, io.SeekStart)
 	if err != nil {
-		return "", false, "", err
+		return h, err
 	}
-	var LinkFlags uint32
-	err = binary.Read(file, binary.LittleEndian, &(LinkFlags))
+	err = binary.Read(file, binary.LittleEndian, &(h.LinkFlags))
 	if err != nil {
-		return "", false, "", err
+		return h, err
 	}
-	lf := NewLinkFlags(LinkFlags)
-	if !lf.HasLinkInfo {
-		return "", false, "", fmt.Errorf("linkinfo not found")
-	}
-	var FileAttributesFlags uint32
-	err = binary.Read(file, binary.LittleEndian, &(FileAttributesFlags))
+	err = binary.Read(file, binary.LittleEndian, &(h.FileAttributesFlags))
 	if err != nil {
-		return "", false, "", err
+		return h, err
 	}
-	af := NewFileAttributesFlags(FileAttributesFlags)
-	var LinkTargetIDListSize uint16
-	if lf.HasLinkTargetIDList {
-		_, err = file.Seek(HEADERSIZE, io.SeekStart)
+	return h, nil
+}
+
+func ParseLinkTargetIDList(file *os.File, offset int32) (l LinkTargetIDList, err error) {
+	_, err = file.Seek(int64(offset), io.SeekStart)
+	if err != nil {
+		return l, err
+	}
+	err = binary.Read(file, binary.LittleEndian, &(l.IDListSize))
+	if err != nil {
+		return l, err
+	}
+	return l, nil
+}
+
+func ParseLinkInfo(file *os.File, offset int32) (l LinkInfo, err error) {
+	_, err = file.Seek(int64(offset), io.SeekStart)
+	if err != nil {
+		return l, err
+	}
+	err = binary.Read(file, binary.LittleEndian, &(l.LinkInfoSize))
+	if err != nil {
+		return l, err
+	}
+	_, err = file.Seek(int64(offset+8), io.SeekStart)
+	if err != nil {
+		return l, err
+	}
+	err = binary.Read(file, binary.LittleEndian, &(l.LinkInfoFlags))
+	if err != nil {
+		return l, err
+	}
+	VolumeIDAndLocalBasePath := (l.LinkInfoFlags & 1) == 1
+	if VolumeIDAndLocalBasePath {
+		_, err = file.Seek(int64(offset+16), io.SeekStart)
 		if err != nil {
-			return "", false, "", err
+			return l, err
 		}
-		err = binary.Read(file, binary.LittleEndian, &(LinkTargetIDListSize))
+		err = binary.Read(file, binary.LittleEndian, &(l.LocalBasePathOffset))
 		if err != nil {
-			return "", false, "", err
+			return l, err
+		}
+		var localBasePathAddr int64 = int64(offset) + int64(l.LocalBasePathOffset)
+		_, err = file.Seek(localBasePathAddr, io.SeekStart)
+		if err != nil {
+			return l, err
+		}
+		// https://zenn.dev/mattn/articles/fd545a14b0ffdf
+		jr := transform.NewReader(file, japanese.ShiftJIS.NewDecoder())
+		br := bufio.NewReader(jr)
+		l.LocalBasePath, err = br.ReadString(0)
+		if err != nil {
+			return l, err
+		}
+		// remove null char
+		l.LocalBasePath = l.LocalBasePath[:len(l.LocalBasePath)-1]
+	}
+	CommonNetworkRelativeLinkAndPathSuffix := ((l.LinkInfoFlags >> 1) & 1) == 1
+	if CommonNetworkRelativeLinkAndPathSuffix {
+		_, err = file.Seek(int64(offset+20), io.SeekStart)
+		if err != nil {
+			return l, err
+		}
+		err = binary.Read(file, binary.LittleEndian, &(l.CommonNetworkRelativeLinkOffset))
+		if err != nil {
+			return l, err
 		}
 	}
-	var LinkInfoStartAddr int64 = int64(HEADERSIZE + 2 + LinkTargetIDListSize)
-	_, err = file.Seek(LinkInfoStartAddr+8, io.SeekStart)
+	return l, nil
+}
+
+func ParseCommonNetworkRelativeLink(file *os.File, offset int64) (c CommonNetworkRelativeLink, err error) {
+	_, err = file.Seek(int64(offset+4), io.SeekStart)
 	if err != nil {
-		return "", false, "", err
+		return c, err
 	}
-	var LinkInfoFlags uint32
-	err = binary.Read(file, binary.LittleEndian, &(LinkInfoFlags))
+	err = binary.Read(file, binary.LittleEndian, &(c.CommonNetworkRelativeLinkFlags))
 	if err != nil {
-		return "", false, "", err
+		return c, err
 	}
-	VolumeIDAndLocalBasePath := (LinkInfoFlags & 1) == 1
-	if !VolumeIDAndLocalBasePath {
-		return "", false, "", fmt.Errorf("localbasepath not found")
-	}
-	var LocalBasePathOffset uint32
-	_, err = file.Seek(LinkInfoStartAddr+16, io.SeekStart)
+	_, err = file.Seek(int64(offset+8), io.SeekStart)
 	if err != nil {
-		return "", false, "", err
+		return c, err
 	}
-	err = binary.Read(file, binary.LittleEndian, &(LocalBasePathOffset))
+	err = binary.Read(file, binary.LittleEndian, &(c.NetNameOffset))
 	if err != nil {
-		return "", false, "", err
+		return c, err
 	}
-	var LocalBasePathAddr int64 = int64(LinkInfoStartAddr + int64(LocalBasePathOffset))
-	_, err = file.Seek(LocalBasePathAddr, io.SeekStart)
+	var netNameAddr int64 = int64(offset) + int64(c.NetNameOffset)
+	_, err = file.Seek(netNameAddr, io.SeekStart)
 	if err != nil {
-		return "", false, "", err
+		return c, err
 	}
-	// https://zenn.dev/mattn/articles/fd545a14b0ffdf
 	jr := transform.NewReader(file, japanese.ShiftJIS.NewDecoder())
 	br := bufio.NewReader(jr)
-	path, err = br.ReadString(0)
-	if err != nil || path == "" {
-		return "", false, "", err
+	c.NetName, err = br.ReadString(0)
+	if err != nil {
+		return c, err
 	}
-	args = "" // TODO
-	return path[:len(path)-1], af.FILE_ATTRIBUTE_DIRECTORY, args, nil
+	// remove null cahr
+	c.NetName = c.NetName[:len(c.NetName)-1]
+	return c, nil
+}
+
+func ParseStringDataOne(file *os.File, offset int64) (s string, n int, err error) {
+	var countCharacters uint16
+	var o = offset
+	_, err = file.Seek(o, io.SeekStart)
+	if err != nil {
+		return s, 0, err
+	}
+	err = binary.Read(file, binary.LittleEndian, &countCharacters)
+	if err != nil {
+		return s, 0, err
+	}
+	b := make([]byte, countCharacters*2)
+	_, err = file.Read(b)
+	if err != nil {
+		return s, 0, err
+	}
+	utf16 := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)
+	ur := transform.NewReader(bytes.NewReader(b), utf16.NewDecoder())
+	bb, err := io.ReadAll(ur)
+	if err != nil {
+		return s, 0, err
+	}
+	n = 2 + int(countCharacters)*2
+	return string(bb), n, err
+}
+
+func ParseStringData(file *os.File, offset int64, flag LinkFlags) (s StringData, err error) {
+	var o = offset
+	var ss string
+	var n int
+	if flag.HasName {
+		ss, n, err = ParseStringDataOne(file, o)
+		if err != nil {
+			return s, err
+		}
+		s.NAME_STRING = ss
+		o = o + int64(n)
+	}
+	if flag.HasRelativePath {
+		ss, n, err = ParseStringDataOne(file, o)
+		if err != nil {
+			return s, err
+		}
+		s.RELATIVE_PATH = ss
+		o = o + int64(n)
+	}
+	if flag.HasWorkingDir {
+		ss, n, err = ParseStringDataOne(file, o)
+		if err != nil {
+			return s, err
+		}
+		s.WORKING_DIR = ss
+		o = o + int64(n)
+	}
+	if flag.HasArguments {
+		ss, n, err = ParseStringDataOne(file, o)
+		if err != nil {
+			return s, err
+		}
+		s.COMMAND_LINE_ARGUMENTS = ss
+		o = o + int64(n)
+	}
+	if flag.HasIconLocation {
+		ss, _, err = ParseStringDataOne(file, o)
+		if err != nil {
+			return s, err
+		}
+		s.ICON_LOCATION = ss
+	}
+	return s, nil
+}
+
+func ResolveShortcut(file *os.File) (path string, netname string, isdir bool, args string, err error) {
+	// Header
+	header, err := ParseHeader(file)
+	if err != nil {
+		return "", "", false, "", err
+	}
+	lf := NewLinkFlags(header.LinkFlags)
+	if !lf.HasLinkInfo {
+		return "", "", false, "", fmt.Errorf("linkinfo not found")
+	}
+	af := NewFileAttributesFlags(header.FileAttributesFlags)
+	// LinkTargetIDList
+	var linkTargetIDListSize uint32
+	var linkTargetIDList LinkTargetIDList
+	if lf.HasLinkTargetIDList {
+		linkTargetIDList, err = ParseLinkTargetIDList(file, HEADERSIZE)
+		if err != nil {
+			return "", "", false, "", err
+		}
+		linkTargetIDListSize = 2 + uint32(linkTargetIDList.IDListSize)
+	}
+	// LinkInfo
+	var linkInfoStartAddr int64 = int64(HEADERSIZE + linkTargetIDListSize)
+	linkInfo, err := ParseLinkInfo(file, int32(linkInfoStartAddr))
+	if err != nil {
+		return "", "", false, "", err
+	}
+	// CommonNetworkRelativeLink
+	var commonNetworkRelativeLink CommonNetworkRelativeLink
+	if ((linkInfo.LinkInfoFlags >> 1) & 1) == 1 {
+		var commonNetworkRelativeLinkAddr int64 = int64(linkInfoStartAddr) + int64(linkInfo.CommonNetworkRelativeLinkOffset)
+		_, err = file.Seek(commonNetworkRelativeLinkAddr, io.SeekStart)
+		if err != nil {
+			return "", "", false, "", err
+		}
+		commonNetworkRelativeLink, err = ParseCommonNetworkRelativeLink(file, commonNetworkRelativeLinkAddr)
+		if err != nil {
+			return "", "", false, "", err
+		}
+	}
+	if linkInfo.LocalBasePath == "" && commonNetworkRelativeLink.NetName == "" {
+		return "", "", false, "", errors.New("no target path found")
+	}
+	// StringData
+	var stringDataStartAddr int64 = linkInfoStartAddr + int64(linkInfo.LinkInfoSize)
+	stringData, err := ParseStringData(file, stringDataStartAddr, lf)
+	if err != nil {
+		return "", "", false, "", err
+	}
+	return linkInfo.LocalBasePath, commonNetworkRelativeLink.NetName, af.FILE_ATTRIBUTE_DIRECTORY, stringData.COMMAND_LINE_ARGUMENTS, nil
 }
