@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/encoding/unicode"
@@ -94,6 +96,8 @@ type LinkInfo struct {
 	LocalBasePathOffset             uint32
 	LocalBasePath                   string
 	CommonNetworkRelativeLinkOffset uint32
+	CommonPathSuffixOffset          uint32
+	CommonPathSuffix                string
 }
 
 type CommonNetworkRelativeLink struct {
@@ -211,15 +215,10 @@ func ParseLinkInfo(file *os.File, offset int32) (l LinkInfo, err error) {
 		if err != nil {
 			return l, err
 		}
-		// https://zenn.dev/mattn/articles/fd545a14b0ffdf
-		jr := transform.NewReader(file, japanese.ShiftJIS.NewDecoder())
-		br := bufio.NewReader(jr)
-		l.LocalBasePath, err = br.ReadString(0)
+		l.LocalBasePath, err = ReadShiftJISByte(file, localBasePathAddr)
 		if err != nil {
 			return l, err
 		}
-		// remove null char
-		l.LocalBasePath = l.LocalBasePath[:len(l.LocalBasePath)-1]
 	}
 	CommonNetworkRelativeLinkAndPathSuffix := ((l.LinkInfoFlags >> 1) & 1) == 1
 	if CommonNetworkRelativeLinkAndPathSuffix {
@@ -232,7 +231,39 @@ func ParseLinkInfo(file *os.File, offset int32) (l LinkInfo, err error) {
 			return l, err
 		}
 	}
+	_, err = file.Seek(int64(offset+24), io.SeekStart)
+	if err != nil {
+		return l, err
+	}
+	err = binary.Read(file, binary.LittleEndian, &(l.CommonPathSuffixOffset))
+	if err != nil {
+		return l, err
+	}
+	if l.CommonPathSuffixOffset != 0 {
+		var commonPathSuffixAddr int64 = int64(offset) + int64(l.CommonPathSuffixOffset)
+		_, err = file.Seek(commonPathSuffixAddr, io.SeekStart)
+		if err != nil {
+			return l, err
+		}
+		l.CommonPathSuffix, err = ReadShiftJISByte(file, commonPathSuffixAddr)
+		if err != nil {
+			return l, err
+		}
+	}
 	return l, nil
+}
+
+func ReadShiftJISByte(r io.Reader, addr int64) (s string, err error) {
+	// https://zenn.dev/mattn/articles/fd545a14b0ffdf
+	jr := transform.NewReader(r, japanese.ShiftJIS.NewDecoder())
+	br := bufio.NewReader(jr)
+	s, err = br.ReadString(0)
+	if err != nil {
+		return s, err
+	}
+	// remove null char
+	s = s[:len(s)-1]
+	return s, nil
 }
 
 func ParseCommonNetworkRelativeLink(file *os.File, offset int64) (c CommonNetworkRelativeLink, err error) {
@@ -380,7 +411,8 @@ func ResolveShortcut(file *os.File) (path string, netname string, isdir bool, ar
 			return "", "", false, "", err
 		}
 	}
-	if linkInfo.LocalBasePath == "" && commonNetworkRelativeLink.NetName == "" {
+	netpath := filepath.Join(strings.ToLower(commonNetworkRelativeLink.NetName), linkInfo.CommonPathSuffix)
+	if linkInfo.LocalBasePath == "" && netpath == "" {
 		return "", "", false, "", errors.New("no target path found")
 	}
 	// StringData
@@ -389,5 +421,5 @@ func ResolveShortcut(file *os.File) (path string, netname string, isdir bool, ar
 	if err != nil {
 		return "", "", false, "", err
 	}
-	return linkInfo.LocalBasePath, commonNetworkRelativeLink.NetName, af.FILE_ATTRIBUTE_DIRECTORY, stringData.COMMAND_LINE_ARGUMENTS, nil
+	return linkInfo.LocalBasePath, netpath, af.FILE_ATTRIBUTE_DIRECTORY, stringData.COMMAND_LINE_ARGUMENTS, nil
 }
