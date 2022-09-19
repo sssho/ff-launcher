@@ -74,7 +74,7 @@ func PrintCommands(s SortType) {
 	fmt.Printf(" [%2v] %v\n", CMD_TXT, "Txt")
 	fmt.Println(BLANK_LINE)
 	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_XLSX, "Focus opened xlsx")
-	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_FOLDER, "Focus opened folder(TBD)")
+	fmt.Printf(" [%2v] %v\n", CMD_FOCUS_FOLDER, "Focus opened folder")
 	fmt.Println(BLANK_LINE)
 	fmt.Printf(" [%2v] %v %v\n", CMD_SORT, "Sort Type:", s)
 	fmt.Printf(" [%2v] %v\n", CMD_RELOAD, "Reload(TBD)")
@@ -296,7 +296,25 @@ func actionFocusXlsx(app *App) (status string, err error) {
 }
 
 func actionFocusFolder(app *App) (status string, err error) {
-	return "TBD!", nil
+	paths, err := GetOpenedFolderPaths()
+	if err != nil {
+		return "actionFocusFolder error!", err
+	}
+	if len(paths) == 0 {
+		return "No opened folder found!", nil
+	}
+	var b bytes.Buffer
+	for _, path := range paths {
+		_, err = fmt.Fprintf(&b, "%s\n", path)
+		if err != nil {
+			return "actionFocusFolder error!", err
+		}
+	}
+	status, err = actionSelectbyFF(&b, "opened folders >")
+	if err != nil {
+		return status, err
+	}
+	return "focus!", nil
 }
 
 func actionReload(app *App) (status string, err error) {
